@@ -1,5 +1,7 @@
 # YouTube Downloader
 
+[![CI](https://github.com/PauloParente/youtube-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/PauloParente/youtube-downloader/actions/workflows/ci.yml)
+
 Aplicativo desktop em Python para baixar vídeos e playlists do YouTube, com interface gráfica em CustomTkinter.
 
 ## Requisitos
@@ -13,12 +15,32 @@ Aplicativo desktop em Python para baixar vídeos e playlists do YouTube, com int
 ### Para desenvolvimento (rodar com Python)
 
 - Python 3.10 ou superior
-- FFmpeg no PATH, em `%LOCALAPPDATA%\ffmpeg`, ou gere o `.exe` com `build.ps1` (usa `vendor/ffmpeg`)
+- FFmpeg no PATH, em `%LOCALAPPDATA%\ffmpeg`, ou rode `.\build.ps1` uma vez para popular `vendor\ffmpeg\bin`
 
-## Instalação
+## Começar do zero (clone)
 
 ```powershell
-cd c:\Users\paulo.parente\PythonProject
+git clone https://github.com/PauloParente/youtube-downloader.git
+cd youtube-downloader
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
+python main.py
+python -m pytest
+```
+
+**FFmpeg em desenvolvimento:** instale no PATH, coloque em `%LOCALAPPDATA%\ffmpeg`, ou execute `.\build.ps1` uma vez (baixa para `vendor\ffmpeg` sem gerar o `.exe`).
+
+**Configurações opcionais:** copie `settings.example.json` para `settings.json` na raiz do projeto se quiser valores iniciais. O app cria e atualiza `settings.json` automaticamente ao salvar na tela Configurações.
+
+**Atualizar yt-dlp após o clone:** `.\update-deps.ps1`
+
+Para versões fixas (como no CI), use `pip install -r requirements-lock.txt` em vez de `requirements.txt`.
+
+## Instalação (já com o código local)
+
+```powershell
+cd youtube-downloader
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -26,7 +48,7 @@ pip install -r requirements.txt
 
 ## Execução
 
-**Importante:** use o interpretador do ambiente virtual (`.venv`). Se o Cursor/VS Code estiver usando outro Python, selecione o interpretador em *Python: Select Interpreter* → `.venv\Scripts\python.exe`.
+**Importante:** use o interpretador do ambiente virtual (`.venv`). No Cursor/VS Code: *Python: Select Interpreter* → `.venv\Scripts\python.exe`.
 
 Na raiz do projeto, com o venv ativado:
 
@@ -57,20 +79,25 @@ python -m youtube_downloader
 - Modo somente áudio (MP3)
 - Barra de progresso, label de status e log de marcos
 - Progresso de playlist (ex.: `3/10 concluídos`)
-- Preferências salvas em `settings.json` (pasta, qualidade, áudio, playlist)
-- Barra de menu **Arquivo / Editar / Ajuda** e janela **Preferências** (Editar → Preferências ou `Ctrl+,`)
-- Atalhos: `Ctrl+V` colar URL; ações como abrir pasta, logs e último arquivo no menu
-- Cancelamento de download em andamento (botão ou Arquivo → Cancelar download)
+- Preferências em `settings.json` (pasta, qualidade, áudio, playlist e opções avançadas)
+- Navegação por **sidebar**: Downloads, Biblioteca (em breve), Histórico, Configurações
+- Página **Histórico** com downloads recentes (persistido em `history.json`, local)
+- Página **Configurações** com cards Geral, Qualidade e Formato, Avançado
+- Atalhos: `Ctrl+V` colar URL; `Ctrl+,` ou ícone ⚙ abrir Configurações
+- Cancelamento de download em andamento
 
 Veja o backlog futuro em [ROADMAP.md](ROADMAP.md).
 
 ## Uso
 
-1. Cole a URL do vídeo ou da playlist do YouTube (`Ctrl+V` ou Editar → Colar URL)
-2. Escolha a pasta de destino (ou defina o padrão em **Editar → Preferências**)
-3. Selecione a qualidade ou marque "Somente áudio (MP3)"
-4. Para baixar todos os vídeos de uma playlist, marque **Baixar playlist inteira**
-5. Clique em **Baixar**
+1. Na sidebar, abra **Downloads**
+2. Cole a URL do vídeo ou da playlist (`Ctrl+V`)
+3. Escolha a pasta de destino (ou defina o padrão em **Configurações** na sidebar ou `Ctrl+,`)
+4. Selecione a qualidade ou marque "Somente áudio (MP3)"
+5. Para baixar todos os vídeos de uma playlist, marque **Baixar playlist inteira**
+6. Clique em **Baixar**
+
+Consulte **Histórico** na sidebar para reabrir arquivos baixados recentemente.
 
 ## Gerar executável (.exe)
 
@@ -84,7 +111,7 @@ O script baixa o FFmpeg automaticamente (primeira vez) e gera:
 
 `dist\YouTubeDownloader\YouTubeDownloader.exe` + pasta `ffmpeg\` (ffmpeg.exe, ffprobe.exe).
 
-**Distribuir para amigos:** compacte a pasta inteira `dist\YouTubeDownloader` em um `.zip` (~150–200 MB). Quem receber só extrai e abre o `.exe` — sem instalar Python nem FFmpeg.
+**Distribuir:** compacte a pasta inteira `dist\YouTubeDownloader` em um `.zip` (~150–200 MB). Quem receber só extrai e abre o `.exe` — sem instalar Python nem FFmpeg.
 
 Ao rodar, a pasta `downloads` é criada **ao lado do .exe**.
 
@@ -92,17 +119,17 @@ O pacote inclui licença do FFmpeg em `ffmpeg\LICENSE.txt` (FFmpeg é software G
 
 ## Logs de diagnóstico
 
-O aplicativo grava logs em arquivos ao lado do `.exe` (ou na raiz do projeto em desenvolvimento):
+O aplicativo grava logs na raiz do projeto em desenvolvimento, ou ao lado do `.exe` na distribuição:
 
 - `logs/app.log` — histórico completo (DEBUG, INFO, erros)
 - `logs/errors.log` — apenas erros (ERROR e acima)
 - `logs/cache/` — thumbnails temporárias do preview
 
-Use o botão **Abrir logs** na interface para abrir a pasta no Explorer.
+Abra a pasta `logs` no Explorer para inspecionar os arquivos (não há botão dedicado na interface).
 
 Se algo falhar, reproduza o problema e envie `logs/app.log` e, se existir, `logs/errors.log`.
 
-O log registra de forma pontual: inicio/fim/cancelamento/erro de download, falhas de preview, estado do FFmpeg e validacoes que impedem o download (URL vazia, pasta invalida). O progresso percentual e mensagens rotineiras da interface nao vao para o arquivo.
+O log registra de forma pontual: início/fim/cancelamento/erro de download, falhas de preview, estado do FFmpeg e validações que impedem o download. O progresso percentual rotineiro da interface não vai para o arquivo.
 
 ## Aviso legal
 
@@ -115,7 +142,7 @@ Use este software apenas para conteúdo que você tem direito de baixar. Respeit
 - **Download falha sem motivo claro:** atualize dependências com `.\update-deps.ps1` ou `pip install -U yt-dlp`
 - **Vídeo indisponível:** o vídeo pode ser privado, restrito por região ou removido.
 - **Aviso sobre JavaScript runtime:** versões recentes do yt-dlp podem pedir Deno ou outro runtime JS para extrair todos os formatos do YouTube. Consulte a [documentação do yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/EJS) se alguns formatos estiverem ausentes.
-- **Preview com caixa cinza:** abra `logs/app.log` e procure por `Falha ao exibir thumbnail` ou `preview sem thumbnail_bytes`; envie o trecho do log ao reportar o bug.
+- **Preview com caixa cinza:** abra `logs/app.log` e procure por `Falha ao exibir thumbnail` ou `preview sem thumbnail_bytes`.
 
 ## Testes
 
@@ -129,6 +156,10 @@ Use este software apenas para conteúdo que você tem direito de baixar. Respeit
 ```powershell
 .\update-deps.ps1
 ```
+
+## Contribuir
+
+Veja [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Checklist de release
 

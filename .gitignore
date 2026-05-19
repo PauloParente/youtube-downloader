@@ -5,7 +5,9 @@ __pycache__/
 *.pyo
 downloads/
 logs/
-settings.json
+/settings.json
+/history.json
+/history.json.bak
 *.egg-info/
 dist/
 build/
