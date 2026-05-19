@@ -159,7 +159,7 @@ Use este software apenas para conteúdo que você tem direito de baixar. Respeit
 
 ## Contribuir
 
-Veja [CONTRIBUTING.md](CONTRIBUTING.md).
+Veja [CONTRIBUTING.md](CONTRIBUTING.md). Para desenvolvimento com Cursor ou outros agentes de IA, leia também [AGENTS.md](AGENTS.md).
 
 ## Checklist de release
 

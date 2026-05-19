@@ -29,6 +29,13 @@ Obrigado por ajudar no YouTube Downloader.
 
 O código do app está sob MIT ([LICENSE](LICENSE)). Ao distribuir o `.exe` gerado por `build.ps1`, o pacote inclui FFmpeg (GPL) — respeite a licença do FFmpeg e o aviso legal do README.
 
+## Orientação para Cursor / agentes
+
+- **[AGENTS.md](AGENTS.md)** — mapa do projeto, fluxos (download, preview), o que está implementado vs. pendente, backlog de refatoração.
+- **[`.cursor/rules/`](.cursor/rules/)** — regras automáticas do Cursor (`project-core`, `python-standards`, `ui-customtkinter`, `refactoring`, `tests`).
+
+Leia o `AGENTS.md` antes de mudanças grandes em `app.py` ou ao ligar opções de Configurações ao downloader.
+
 ## Reportar bugs
 
 Use o template de issue no GitHub e anexe trechos relevantes de `logs/app.log` e `logs/errors.log` quando possível.

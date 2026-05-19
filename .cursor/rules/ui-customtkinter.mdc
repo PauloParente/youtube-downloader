@@ -1,0 +1,41 @@
+---
+description: CustomTkinter e views do YouTube Downloader
+globs: src/**/ui/**/*.py
+alwaysApply: false
+---
+
+# UI — CustomTkinter
+
+## Tema
+
+Importar cores e estilos de `ui/theme.py` (`PRIMARY_BTN`, `CARD_STYLE`, `TEXT_MUTED`, etc.). Não duplicar hex/radius em cada arquivo.
+
+## Views de página
+
+Padrão existente: `SettingsView`, `HistoryView`, `NavSidebar`.
+
+- Herdar `ctk.CTkFrame` ou `ctk.CTkScrollableFrame`.
+- Callbacks no `__init__`: `on_save`, `on_open_path`, `on_select` — shell em `app.py` mantém estado.
+- Textos visíveis ao usuário em **português**.
+
+```python
+# ✅ nova tela
+class MinhaView(ctk.CTkFrame):
+    def __init__(self, master, on_action: Callable[[], None], **kwargs): ...
+
+# ❌ centenas de linhas novas direto em app.py
+```
+
+## Threading (crítico)
+
+- Worker thread: apenas download / rede / yt-dlp.
+- Atualizar widgets **somente** na main thread (`after`, fila + `_poll_queue` como em `app.py`).
+- ❌ `widget.configure(...)` dentro de `threading.Thread`.
+
+## Navegação
+
+Nova item na sidebar: editar `NavSidebar.ITEMS` e registrar frame em `app._view_frames` + `_switch_view`.
+
+## Placeholders
+
+Biblioteca usa `_build_placeholder_view` — não implementar lógica pesada até o item sair do backlog ([ROADMAP.md](../../ROADMAP.md)).

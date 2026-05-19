@@ -1,0 +1,45 @@
+---
+description: Como refatorar com segurança neste projeto
+alwaysApply: true
+---
+
+# Refatoração
+
+Consulte [AGENTS.md](../../AGENTS.md) — seção *Backlog de refatoração*.
+
+## Princípios
+
+1. **Comportamento separado de estrutura** — um PR só move código; outro altera regras de negócio.
+2. **Extrair antes de reescrever** — copiar para `ui/downloads_view.py` (ou `core/`), manter assinaturas, `pytest` verde.
+3. **Não big-bang** — `app.py` tem ~1250 linhas; fatiar em PRs pequenos.
+
+## Prioridade alta
+
+| Meta | Ação |
+|------|------|
+| `DownloadsView` | Mover tela Downloads de `app.py` para `ui/downloads_view.py`; app só faz wiring + fila |
+| Settings → download | Estender `DownloadJob` + `YoutubeDownloader`; não só UI |
+
+## Ao extrair de app.py
+
+- Passar dependências via construtor (downloader, callbacks, `StringVar` se necessário).
+- Manter `ProgressEvent` / `queue` no shell ou documentar quem dona a fila.
+- Função pura extraída → teste em `tests/` (ver `test_downloader_helpers.py`).
+
+## Exemplos
+
+```python
+# ❌ EVITAR — feature nova só em app.py
+def _build_nova_secao(self):  # +200 linhas em app.py
+
+# ✅ PREFERIR
+# ui/nova_view.py + ~20 linhas em app para registrar view
+```
+
+## Antes de dizer “já funciona”
+
+Verificar se a opção em Configurações chega ao `DownloadJob`. Se não, a tarefa inclui core + UI.
+
+## Evitar
+
+Reestruturar todo o pacote, DI pesado, renomear módulos em massa, adicionar linter sem pedido do mantenedor.

@@ -1,0 +1,50 @@
+---
+description: Padrões Python para src/ e tests/
+globs: src/**/*.py,tests/**/*.py
+alwaysApply: false
+---
+
+# Python — padrões do projeto
+
+## Imports e pacote
+
+```python
+# ✅
+from youtube_downloader.core.logging_config import get_logger
+from youtube_downloader.config import QUALITY_OPTIONS
+
+# ❌ imports relativos frágeis fora do pacote
+from ..core import downloader
+```
+
+## Logging
+
+```python
+logger = get_logger(__name__)
+logger.info("Download concluido: %s", path)
+# ❌ print("debug") em fluxo de producao
+```
+
+## Modelos e settings
+
+- Dataclasses para DTOs (`AppSettings`, `DownloadJob`, `DownloadHistoryEntry`).
+- Ao carregar JSON: função `_coerce_*` com defaults e validação de enums (ver `settings.py`, `download_history.py`).
+- `typing` em APIs públicas; evitar `Any` desnecessário.
+
+## Separação core / UI
+
+```python
+# ✅ logica testavel em core/
+def format_file_size(size_bytes: int) -> str: ...
+
+# ❌ chamar yt_dlp ou tkinter dentro de ui/history_view para regra de negocio pesada
+```
+
+## Qualidade de vídeo
+
+`QUALITY_FORMATS` em `config.py` prioriza DASH (`bestvideo+bestaudio`) — não reintroduzir `best[ext=mp4]` como primeira opção (regressão 360p; ver `tests/test_downloader_helpers.py`).
+
+## Exceções
+
+- Logar com `logger.exception` ou `logger.warning` e mensagem útil para o usuário na UI quando aplicável.
+- Não engolir exceções com `except: pass`.

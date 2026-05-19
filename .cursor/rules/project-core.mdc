@@ -1,0 +1,37 @@
+---
+description: Stack, layout e convenções gerais do YouTube Downloader
+alwaysApply: true
+---
+
+# Projeto — núcleo
+
+Leia [AGENTS.md](../../AGENTS.md) para arquitetura, lacunas settings→downloader e backlog de refatoração.
+
+## Stack
+
+Python 3.10+, CustomTkinter, yt-dlp, Pillow, FFmpeg. Entrada: `main.py` ou `python -m youtube_downloader`. Código em `src/youtube_downloader/`.
+
+## Onde colocar código
+
+- Lógica de download, JSON, yt-dlp, FFmpeg → `core/`
+- Telas e widgets → `ui/`
+- Constantes globais → `config.py`
+- Orquestração da janela → `app.py` (evitar crescer; preferir novas views em `ui/`)
+
+## Git e dados locais
+
+Não commitar: `settings.json`, `history.json`, `downloads/`, `logs/`, `.venv/`, `vendor/`, `dist/`.
+
+## Antes de concluir uma feature
+
+- Rodar `python -m pytest`
+- Se mudou UI visível ou fluxo de instalação → atualizar [README.md](../../README.md)
+- Diff mínimo; não refatorar arquivos não relacionados
+
+## Configurações vs. download
+
+Campos em `AppSettings` (idioma, formato vídeo, legendas, banda, notificações) podem existir só na UI/JSON. Só considerar “implementado no download” se estiverem em `DownloadJob` e `YoutubeDownloader`.
+
+## Respostas
+
+Preferir português nas mensagens ao usuário; identificadores e logs técnicos em inglês quando já for o padrão do arquivo.

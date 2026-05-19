@@ -1,0 +1,32 @@
+---
+description: Testes pytest do YouTube Downloader
+globs: tests/**/*.py
+alwaysApply: false
+---
+
+# Testes
+
+## Execução
+
+```powershell
+python -m pytest
+```
+
+Config: [pytest.ini](../../pytest.ini) — `pythonpath = src`, `testpaths = tests`.
+
+## O que testar
+
+- ✅ Funções puras: formatação, coerção de settings/history, strings `QUALITY_FORMATS`, helpers do downloader.
+- ✅ Comportamento regressão documentado (ex.: não priorizar MP4 360p).
+- ❌ Testes que só importam módulo ou assertam `True`.
+- ❌ Depender de rede/YouTube real sem mock — testes devem ser offline e rápidos.
+
+## Estilo
+
+- Arquivos `test_<modulo>.py`; funções `test_<comportamento>`.
+- Arrange / act / assert claros; um conceito por teste quando possível.
+- Usar `tmp_path` para arquivos temporários (settings/history).
+
+## Após refatorar
+
+Se extrair lógica de `app.py` para `core/`, adicionar cobertura antes ou no mesmo PR da extração.
