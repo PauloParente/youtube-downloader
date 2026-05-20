@@ -1,5 +1,6 @@
 """yt-dlp wrapper with progress hooks and cancellation support."""
 
+import copy
 import os
 import re
 import threading
@@ -12,8 +13,8 @@ from youtube_downloader.config import (
     AUDIO_FORMAT,
     AUDIO_POSTPROCESSORS,
     QUALITY_FORMATS,
-    VIDEO_MERGE_OUTPUT_FORMAT,
 )
+from youtube_downloader.core.download_job_builder import subtitle_languages_for_ui_language
 from youtube_downloader.core.ffmpeg_utils import (
     ffmpeg_available as is_ffmpeg_available,
     find_ffmpeg_dir,
@@ -25,9 +26,59 @@ from youtube_downloader.core.text_utils import strip_ansi, truncate_text
 logger = get_logger("downloader")
 
 _PROGRESS_THROTTLE_SEC = 0.4
-_MERGE_STATUS_MESSAGE = "Mesclando vídeo e áudio em MP4…"
+
+def _merge_status_message(job: DownloadJob) -> str:
+    if job.audio_only:
+        return "Convertendo áudio…"
+    fmt = job.video_format.upper() if job.video_format in ("mp4", "webm") else "MP4"
+    return f"Mesclando vídeo e áudio em {fmt}…"
+
 _INTERMEDIATE_FRAGMENT_RE = re.compile(r"\.f\d+\.", re.IGNORECASE)
 _ORPHAN_FRAGMENT_RE = re.compile(r"\.f\d+\.[^.]+$", re.IGNORECASE)
+
+_KBPS_TO_BYTES_PER_SEC = 125  # 1 kbps ≈ 125 bytes/s for yt-dlp ratelimit
+
+
+def build_ytdl_opts(job: DownloadJob, ffmpeg_dir: str) -> dict:
+    """Build yt-dlp options from a download job (testable, no network)."""
+    format_string = AUDIO_FORMAT if job.audio_only else QUALITY_FORMATS.get(
+        job.quality, QUALITY_FORMATS["Melhor disponível"]
+    )
+
+    opts: dict = {
+        "outtmpl": os.path.join(job.output_dir, "%(title)s.%(ext)s"),
+        "format": format_string,
+        "ffmpeg_location": ffmpeg_dir,
+        "noplaylist": not job.download_playlist,
+        "ignoreerrors": False,
+        "quiet": True,
+        "no_warnings": True,
+        "color": "never",
+        "restrictfilenames": True,
+        "windowsfilenames": True,
+    }
+
+    if job.bandwidth_limit_kbps > 0:
+        opts["ratelimit"] = job.bandwidth_limit_kbps * _KBPS_TO_BYTES_PER_SEC
+
+    if job.audio_only:
+        postprocessors = copy.deepcopy(AUDIO_POSTPROCESSORS)
+        postprocessors[0]["preferredquality"] = job.audio_bitrate
+        opts["postprocessors"] = postprocessors
+    else:
+        merge_format = job.video_format if job.video_format in ("mp4", "webm") else "mp4"
+        opts["merge_output_format"] = merge_format
+
+    if job.auto_download_subtitles:
+        opts["writesubtitles"] = True
+        opts["writeautomaticsub"] = True
+        opts["subtitleslangs"] = subtitle_languages_for_ui_language(job.ui_language)
+        opts["subtitlesformat"] = "best"
+
+    if job.cookies_file and os.path.isfile(job.cookies_file):
+        opts["cookiefile"] = job.cookies_file
+
+    return opts
 
 
 class DownloadCancelled(Exception):
@@ -38,6 +89,7 @@ class YoutubeDownloader:
     def __init__(self) -> None:
         self._cancel = threading.Event()
         self._current_title: Optional[str] = None
+        self._current_job: Optional[DownloadJob] = None
         self._last_filepath: Optional[str] = None
         self._playlist_completed = 0
         self._playlist_total: Optional[int] = None
@@ -49,6 +101,7 @@ class YoutubeDownloader:
     def reset(self) -> None:
         self._cancel.clear()
         self._current_title = None
+        self._current_job = None
         self._last_filepath = None
         self._playlist_completed = 0
         self._playlist_total = None
@@ -131,12 +184,17 @@ class YoutubeDownloader:
         self.reset()
 
         logger.info(
-            "Download iniciado: url=%s pasta=%s qualidade=%s audio_only=%s playlist=%s",
+            "Download iniciado: url=%s pasta=%s qualidade=%s audio_only=%s playlist=%s "
+            "formato=%s bitrate=%s banda_kbps=%s legendas=%s",
             job.url,
             job.output_dir,
             job.quality,
             job.audio_only,
             job.download_playlist,
+            job.video_format,
+            job.audio_bitrate,
+            job.bandwidth_limit_kbps,
+            job.auto_download_subtitles,
         )
 
         ffmpeg_dir = find_ffmpeg_dir()
@@ -153,31 +211,11 @@ class YoutubeDownloader:
             )
             return
 
-        format_string = AUDIO_FORMAT if job.audio_only else QUALITY_FORMATS.get(
-            job.quality, QUALITY_FORMATS["Melhor disponível"]
-        )
-
+        self._current_job = job
         progress_hook = self._make_hook(on_event, job)
-        opts: dict = {
-            "outtmpl": os.path.join(job.output_dir, "%(title)s.%(ext)s"),
-            "format": format_string,
-            "ffmpeg_location": ffmpeg_dir,
-            "progress_hooks": [progress_hook],
-            "postprocessor_hooks": [self._make_postprocessor_hook(on_event)],
-            "noplaylist": not job.download_playlist,
-            "ignoreerrors": False,
-            "quiet": True,
-            "no_warnings": True,
-            "color": "never",
-            "restrictfilenames": True,
-            "windowsfilenames": True,
-        }
-
-        if job.audio_only:
-            opts["postprocessors"] = AUDIO_POSTPROCESSORS
-        else:
-            # bestvideo+bestaudio enfileira FFmpegMergerPP automaticamente no yt-dlp.
-            opts["merge_output_format"] = VIDEO_MERGE_OUTPUT_FORMAT
+        opts = build_ytdl_opts(job, ffmpeg_dir)
+        opts["progress_hooks"] = [progress_hook]
+        opts["postprocessor_hooks"] = [self._make_postprocessor_hook(on_event)]
 
         try:
             if not job.audio_only:
@@ -271,16 +309,18 @@ class YoutubeDownloader:
         return f"{prefix}Baixando: {title}…"
 
     def _emit_merge_status(self, on_event: Callable[[ProgressEvent], None]) -> None:
+        job = self._current_job
+        message = _merge_status_message(job) if job else "Mesclando vídeo e áudio…"
         on_event(
             ProgressEvent(
                 event_type=EventType.LOG,
-                message=_MERGE_STATUS_MESSAGE,
+                message=message,
             )
         )
         on_event(
             ProgressEvent(
                 event_type=EventType.PROGRESS,
-                message=_MERGE_STATUS_MESSAGE,
+                message=message,
             )
         )
 

@@ -25,6 +25,8 @@ class AppSettings:
     bandwidth_limit_kbps: int = 0
     notify_on_complete: bool = True
     auto_download_subtitles: bool = False
+    appearance_mode: str = "dark"
+    cookies_file: str = ""
 
     @classmethod
     def defaults(cls) -> "AppSettings":
@@ -39,6 +41,8 @@ class AppSettings:
             bandwidth_limit_kbps=0,
             notify_on_complete=True,
             auto_download_subtitles=False,
+            appearance_mode="dark",
+            cookies_file="",
         )
 
 
@@ -62,6 +66,10 @@ def _coerce_settings(data: dict[str, Any]) -> AppSettings:
         bandwidth = defaults.bandwidth_limit_kbps
     if bandwidth < 0:
         bandwidth = 0
+    appearance = str(data.get("appearance_mode", defaults.appearance_mode))
+    if appearance not in ("dark", "light"):
+        appearance = defaults.appearance_mode
+    cookies_file = str(data.get("cookies_file", defaults.cookies_file)).strip()
 
     return AppSettings(
         output_dir=str(data.get("output_dir", defaults.output_dir)),
@@ -78,6 +86,8 @@ def _coerce_settings(data: dict[str, Any]) -> AppSettings:
         auto_download_subtitles=bool(
             data.get("auto_download_subtitles", defaults.auto_download_subtitles)
         ),
+        appearance_mode=appearance,
+        cookies_file=cookies_file,
     )
 
 
