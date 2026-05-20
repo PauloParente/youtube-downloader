@@ -100,17 +100,18 @@ Nunca atualizar CustomTkinter a partir do worker.
 
 | Área | Status |
 |------|--------|
-| Download vídeo/playlist, qualidade, áudio MP3, merge MP4 | Implementado (`downloader`, `config.QUALITY_FORMATS` DASH-first) |
+| Download vídeo/playlist, qualidade, áudio MP3, merge MP4/WebM | Implementado (`downloader`, `build_ytdl_opts`) |
 | Preview título/thumbnail | Implementado (`metadata`) |
-| Sidebar, Configurações, Histórico | Implementado |
-| Biblioteca | Placeholder apenas (`_build_placeholder_view`) |
+| Sidebar, Configurações, Histórico, Biblioteca | Implementado (`ui/*_view.py`) |
+| Fila de downloads | Implementado (sequencial; UI sem lista editável — ver [ROADMAP.md](ROADMAP.md)) |
+| Abrir pasta/arquivo, histórico (↻, 📄) | Implementado |
 | Persistência `settings.json` / `history.json` | Implementado |
-| Campos avançados em `AppSettings` (formato vídeo, bitrate, banda, legendas, notificações) | Implementado em `DownloadJob` + `build_ytdl_opts` (`core/downloader.py`) |
-| Idioma da interface (`AppSettings.language`) | Só UI/JSON por enquanto (não traduz a interface) |
-| Notificações ao concluir | Implementado (`core/notifications.py`, Linux/macOS/Windows) |
-| Tema claro/escuro | Não implementado (apenas dark em `app`) |
+| Campos avançados + cookies + tema | Implementado em `DownloadJob` / `AppSettings` / `build_ytdl_opts` |
+| Idioma (`AppSettings.language`) | Só legendas no yt-dlp; UI em português (rótulo “Idioma das legendas”) |
+| Notificações ao concluir | Implementado (`core/notifications.py`) |
+| Backlog de produto | [ROADMAP.md](ROADMAP.md) — drag-and-drop, MKV, i18n, CI Linux, etc. |
 
-**Regra:** não assumir que um toggle em Configurações altera o download até existir em `DownloadJob` e em `build_ytdl_opts()` (`core/downloader.py`). Salvar em Configurações antes de baixar se acabou de mudar opções avançadas.
+**Regra:** opções avançadas só valem no download após **Salvar** em Configurações (ou já persistidas em `settings.json`). Campos da tela Downloads (pasta, qualidade, áudio, playlist) são gravados ao baixar.
 
 ## Padrões de código (resumo)
 
