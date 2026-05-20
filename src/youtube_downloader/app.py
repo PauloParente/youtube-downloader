@@ -48,6 +48,7 @@ from youtube_downloader.core.logging_config import (
     install_ui_exception_logging,
 )
 from youtube_downloader.core.models import DownloadJob, EventType, ProgressEvent
+from youtube_downloader.core.preview_cache import PreviewCache
 from youtube_downloader.core.notifications import notify_download_complete
 from youtube_downloader.core.settings import AppSettings, load_settings, save_settings
 from youtube_downloader.ui.about_dialog import show_about_dialog
@@ -83,6 +84,8 @@ class YoutubeDownloaderApp(ctk.CTk):
         self._downloader = YoutubeDownloader()
         self._event_queue: queue.Queue[ProgressEvent] = queue.Queue()
         self._download_queue = DownloadQueue()
+        self._preview_cache = PreviewCache()
+        self._preview_cache.on_updated(self._on_preview_cache_updated)
         self._downloads_view: Optional[DownloadsView] = None
         self._queue_view: Optional[QueueView] = None
         self._download_thread: Optional[threading.Thread] = None
@@ -126,12 +129,13 @@ class YoutubeDownloaderApp(ctk.CTk):
         channel_name: str = "",
         channel_url: str = "",
         thumbnail_bytes: Optional[bytes] = None,
+        thumbnail_path: str = "",
     ) -> None:
         if not os.path.isfile(filepath):
             return
         label = (title or "").strip() or os.path.basename(filepath)
-        thumb_path = ""
-        if thumbnail_bytes and source_url.strip():
+        thumb_path = thumbnail_path
+        if not thumb_path and thumbnail_bytes and source_url.strip():
             thumb_path = save_history_thumbnail(source_url, thumbnail_bytes)
         entry = DownloadHistoryEntry.from_filepath(
             filepath,
@@ -142,8 +146,58 @@ class YoutubeDownloaderApp(ctk.CTk):
             thumbnail_path=thumb_path,
         )
         self._history_entries = add_history_entry(entry)
-        if self._history_view is not None:
+        if (
+            self._history_view is not None
+            and self._sidebar is not None
+            and self._sidebar._active_id == "history"
+        ):
             self._history_view.set_entries(self._history_entries)
+
+    def _add_history_entry_async(
+        self,
+        filepath: str,
+        title: Optional[str] = None,
+        source_url: str = "",
+        *,
+        channel_name: str = "",
+        channel_url: str = "",
+        thumbnail_bytes: Optional[bytes] = None,
+    ) -> None:
+        """Persist history off the UI thread (avoids freeze between queue items)."""
+        if not os.path.isfile(filepath):
+            return
+
+        def worker() -> None:
+            thumb_path = ""
+            if thumbnail_bytes and source_url.strip():
+                thumb_path = save_history_thumbnail(source_url, thumbnail_bytes)
+            label = (title or "").strip() or os.path.basename(filepath)
+            entry = DownloadHistoryEntry.from_filepath(
+                filepath,
+                label,
+                source_url,
+                channel_name=channel_name,
+                channel_url=channel_url,
+                thumbnail_path=thumb_path,
+            )
+            try:
+                entries = add_history_entry(entry)
+            except Exception:
+                logger.exception("Falha ao gravar historico em background")
+                return
+
+            def on_main() -> None:
+                self._history_entries = entries
+                if (
+                    self._history_view is not None
+                    and self._sidebar is not None
+                    and self._sidebar._active_id == "history"
+                ):
+                    self._history_view.set_entries(entries)
+
+            self.after(0, on_main)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _open_history_folder(self, filepath: str) -> None:
         if os.path.isfile(filepath):
@@ -186,31 +240,60 @@ class YoutubeDownloaderApp(ctk.CTk):
         self._history_entries = remove_history_entry(filepath)
         return self._history_entries
 
-    def _sync_queue_ui(self) -> None:
+    def _on_preview_cache_updated(self, url: str) -> None:
+        self.after(0, lambda u=url: self._handle_preview_cache_updated(u))
+
+    def _handle_preview_cache_updated(self, url: str) -> None:
+        if self._queue_view is not None:
+            self._queue_view.update_card(url)
+        if self._downloads_view is not None:
+            cleaned = url.strip()
+            if (
+                self._downloads_view.is_downloading
+                and self._downloads_view.current_url.strip() == cleaned
+            ):
+                preview = self._preview_cache.get(cleaned)
+                if preview and preview.title:
+                    self._downloads_view.set_now_playing_title(preview.title)
+                self._sync_now_playing_panel()
+
+    def _sync_now_playing_panel(self) -> None:
+        if self._queue_view is None or self._downloads_view is None:
+            return
+        meta = self._downloads_view.get_now_playing_meta()
+        self._queue_view.set_thumbnail_bytes(meta.get("thumbnail_bytes"))
+        self._queue_view.set_now_playing(
+            active=meta["active"],
+            url=meta["url"],
+            title=meta["title"],
+            status=meta["status"],
+            percent=meta["percent"],
+        )
+
+    def _sync_queue_structure(self) -> None:
         if self._queue_view is None:
             return
         self._queue_view.refresh()
-        if self._downloads_view is not None:
-            meta = self._downloads_view.get_now_playing_meta()
-            self._queue_view.set_thumbnail_bytes(meta.get("thumbnail_bytes"))
-            self._queue_view.set_now_playing(
-                active=meta["active"],
-                url=meta["url"],
-                title=meta["title"],
-                status=meta["status"],
-                percent=meta["percent"],
-            )
+        self._sync_now_playing_panel()
+
+    def _prefetch_queue_urls(self, urls: list[str]) -> None:
+        if urls:
+            self._preview_cache.request(urls)
 
     def _enqueue_download_url(self, url: str) -> bool:
         added = self._download_queue.add(url)
         if added:
-            self._sync_queue_ui()
+            self._prefetch_queue_urls([url])
+            self._sync_queue_structure()
         return added
 
     def _enqueue_download_urls(self, urls: list[str]) -> int:
+        before = set(self._download_queue.snapshot())
         added = self._download_queue.add_many(urls)
         if added:
-            self._sync_queue_ui()
+            new_urls = [u for u in self._download_queue.snapshot() if u not in before]
+            self._prefetch_queue_urls(new_urls)
+            self._sync_queue_structure()
         return added
 
     def _get_queue_snapshot(self) -> list[str]:
@@ -218,7 +301,7 @@ class YoutubeDownloaderApp(ctk.CTk):
 
     def _remove_queue_at(self, index: int) -> None:
         if self._download_queue.remove_at(index):
-            self._sync_queue_ui()
+            self._sync_queue_structure()
             if self._downloads_view is not None:
                 self._downloads_view.append_log(
                     f"Removido da fila (posição {index + 1})."
@@ -228,14 +311,14 @@ class YoutubeDownloaderApp(ctk.CTk):
         if not self._download_queue.snapshot():
             return
         self._download_queue.clear()
-        self._sync_queue_ui()
+        self._sync_queue_structure()
         if self._downloads_view is not None:
             self._downloads_view.append_log("Fila esvaziada.")
 
     def _pop_next_queue_url(self) -> str | None:
         url = self._download_queue.pop_next()
         if url:
-            self._sync_queue_ui()
+            self._sync_queue_structure()
         return url
 
     def _download_worker_alive(self) -> bool:
@@ -249,8 +332,9 @@ class YoutubeDownloaderApp(ctk.CTk):
         next_url = self._download_queue.pop_next()
         if not next_url:
             return
-        self._sync_queue_ui()
-        self._downloads_view.start_download_for_url(next_url)
+        if self._queue_view is not None:
+            self._queue_view.reconcile_pending()
+        self._downloads_view.continue_queue_for_url(next_url)
 
     def _build_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
@@ -280,10 +364,12 @@ class YoutubeDownloaderApp(ctk.CTk):
         self._downloads_view = DownloadsView(
             content,
             event_queue=self._event_queue,
+            preview_cache=self._preview_cache,
             on_start_download=self._run_download_job,
             on_cancel_download=self._downloader.cancel,
             on_persist_settings=self._persist_settings,
             on_add_history=self._add_history_entry,
+            on_add_history_async=self._add_history_entry_async,
             on_get_app_settings=lambda: self._settings,
             on_enqueue_url=self._enqueue_download_url,
             on_enqueue_urls=self._enqueue_download_urls,
@@ -291,7 +377,8 @@ class YoutubeDownloaderApp(ctk.CTk):
             on_remove_queue_at=self._remove_queue_at,
             on_clear_queue=self._clear_download_queue,
             pop_next_queue_url=self._pop_next_queue_url,
-            on_sync_queue_ui=self._sync_queue_ui,
+            on_sync_queue_structure=self._sync_queue_structure,
+            on_sync_now_playing=self._sync_now_playing_panel,
             initial_output_dir=str(DEFAULT_DOWNLOADS_DIR),
         )
         self._view_frames["download"] = self._downloads_view
@@ -299,6 +386,9 @@ class YoutubeDownloaderApp(ctk.CTk):
         self._queue_view = QueueView(
             content,
             get_queue_snapshot=self._get_queue_snapshot,
+            get_cached_preview=self._preview_cache.get,
+            get_card_thumb=self._preview_cache.get_card_thumb,
+            is_preview_pending=self._preview_cache.is_pending,
             on_remove_queue_at=self._remove_queue_at,
             on_cancel_download=lambda: (
                 self._downloads_view.cancel_download()
@@ -513,21 +603,18 @@ class YoutubeDownloaderApp(ctk.CTk):
                     EventType.ERROR,
                     EventType.CANCELLED,
                 ):
-                    meta = self._downloads_view.get_now_playing_meta()
-                    self._queue_view.set_thumbnail_bytes(meta.get("thumbnail_bytes"))
-                    self._queue_view.set_now_playing(
-                        active=meta["active"],
-                        url=meta["url"],
-                        title=meta["title"],
-                        status=meta["status"],
-                        percent=meta["percent"],
-                    )
-                if event.event_type in (
-                    EventType.DONE,
-                    EventType.CANCELLED,
-                    EventType.ERROR,
-                ):
-                    self._sync_queue_ui()
+                    self._sync_now_playing_panel()
+                if event.event_type in (EventType.DONE, EventType.CANCELLED, EventType.ERROR):
+                    continuing_queue = False
+                    if self._downloads_view is not None and self._downloads_view.is_downloading:
+                        if event.event_type == EventType.CANCELLED:
+                            continuing_queue = (
+                                self._downloads_view.should_continue_queue_after_cancel()
+                            )
+                        elif event.event_type == EventType.DONE:
+                            continuing_queue = bool(self._get_queue_snapshot())
+                    if not continuing_queue:
+                        self._sync_queue_structure()
 
             job = self._active_download_job
             if job is None:

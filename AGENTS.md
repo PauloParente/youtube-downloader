@@ -41,6 +41,7 @@ src/youtube_downloader/
     notifications.py              # notificação desktop ao concluir download
     ffmpeg_utils.py               # localizar FFmpeg
     logging_config.py             # logs em logs/
+    preview_cache.py              # cache + prefetch de metadados (fila/cards)
     text_utils.py                 # truncate, strip_ansi
   ui/
     theme.py                      # cores e estilos de botões
@@ -78,7 +79,7 @@ flowchart TB
 
 ### Responsabilidades
 
-- **`app.py`**: janela principal, sidebar + navegação, `_poll_queue` → `_handle_event` (delega à `DownloadsView` e `QueueView`), `_sync_queue_ui`, `_run_download_job` (thread + `YoutubeDownloader`), histórico/settings wiring, diálogo Sobre (sidebar), notificação ao `DONE`.
+- **`app.py`**: janela principal, sidebar + navegação, `_poll_queue` → `_handle_event` (delega à `DownloadsView` e `QueueView`), `PreviewCache`, `_sync_queue_structure` / `update_card`, `_run_download_job` (thread + `YoutubeDownloader`), histórico/settings wiring, diálogo Sobre (sidebar), notificação ao `DONE`.
 - **`ui/downloads_view.py`**: URL, preview (debounce + worker), opções locais, pasta, log, **+ Fila**, **Baixar** / **Cancelar** no rodapé; `get_now_playing_meta()` para a tela Fila; `force_release_download_ui` se o evento terminal falhar.
 - **`ui/queue_view.py`**: card *Baixando agora* (miniatura, título, barra, Cancelar/Pular) e card *Na fila* (lista, limpar, remover).
 - **`core/`**: lógica testável sem Tk; `build_ytdl_opts(job)` mapeia `DownloadJob` → opções yt-dlp.

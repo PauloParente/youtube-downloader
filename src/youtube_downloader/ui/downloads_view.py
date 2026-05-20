@@ -35,6 +35,7 @@ from youtube_downloader.core.metadata import (
     format_duration,
     is_youtube_url,
 )
+from youtube_downloader.core.preview_cache import PreviewCache
 from youtube_downloader.core.download_job_builder import build_download_job
 from youtube_downloader.core.playlist_urls import (
     PlaylistExpandError,
@@ -80,10 +81,12 @@ class DownloadsView(ctk.CTkFrame):
         master: ctk.CTkBaseClass,
         *,
         event_queue: queue.Queue[ProgressEvent],
+        preview_cache: PreviewCache,
         on_start_download: Callable[[DownloadJob], None],
         on_cancel_download: Callable[[], None],
         on_persist_settings: Callable[[], None],
         on_add_history: Callable[..., None],
+        on_add_history_async: Callable[..., None],
         on_get_app_settings: Callable[[], AppSettings],
         on_enqueue_url: Callable[[str], bool],
         on_enqueue_urls: Callable[[list[str]], int],
@@ -91,27 +94,30 @@ class DownloadsView(ctk.CTkFrame):
         on_remove_queue_at: Callable[[int], None],
         on_clear_queue: Callable[[], None],
         pop_next_queue_url: Callable[[], Optional[str]],
-        on_sync_queue_ui: Callable[[], None],
+        on_sync_queue_structure: Callable[[], None],
+        on_sync_now_playing: Callable[[], None],
         initial_output_dir: str,
         **kwargs,
     ) -> None:
         super().__init__(master, fg_color="transparent", **kwargs)
         self._event_queue = event_queue
+        self._preview_cache = preview_cache
         self._on_start_download = on_start_download
         self._on_cancel_download = on_cancel_download
         self._on_persist_settings = on_persist_settings
         self._on_add_history = on_add_history
+        self._on_add_history_async = on_add_history_async
         self._get_app_settings = on_get_app_settings
         self._on_enqueue_url = on_enqueue_url
         self._on_enqueue_urls = on_enqueue_urls
         self._get_queue_snapshot = get_queue_snapshot
         self._expanding_playlist = False
         self._stop_batch_on_cancel = False
-        self._history_meta_cache: dict[str, VideoPreview] = {}
         self._on_remove_queue_at = on_remove_queue_at
         self._on_clear_queue = on_clear_queue
         self._pop_next_queue_url = pop_next_queue_url
-        self._on_sync_queue_ui = on_sync_queue_ui
+        self._on_sync_queue_structure = on_sync_queue_structure
+        self._on_sync_now_playing = on_sync_now_playing
 
         self._is_downloading = False
         self._last_progress_percent: Optional[float] = None
@@ -144,6 +150,13 @@ class DownloadsView(ctk.CTkFrame):
     def is_downloading(self) -> bool:
         return self._is_downloading
 
+    @property
+    def current_url(self) -> str:
+        return self._url_entry.get().strip()
+
+    def set_now_playing_title(self, title: str) -> None:
+        self._now_playing_title = title.strip() or None
+
     def collect_settings(self) -> AppSettings:
         return self._collect_settings()
 
@@ -172,9 +185,18 @@ class DownloadsView(ctk.CTkFrame):
     def skip_to_next_download(self) -> None:
         self._skip_to_next_download()
 
+    def get_cached_preview(self, url: str) -> Optional[VideoPreview]:
+        return self._preview_cache.get(url)
+
+    def prefetch_preview_meta(self, url: str) -> None:
+        self._preview_cache.request([url])
+
+    def prefetch_preview_meta_many(self, urls: list[str]) -> None:
+        self._preview_cache.request(urls)
+
     def get_now_playing_meta(self) -> dict:
         url = self._url_entry.get().strip()
-        cached = self._history_meta_cache.get(url)
+        cached = self._preview_cache.get(url)
         title = (self._now_playing_title or "").strip()
         if not title and cached and cached.title:
             title = cached.title.strip()
@@ -221,6 +243,19 @@ class DownloadsView(ctk.CTkFrame):
         self._url_entry.insert(0, cleaned)
         self._schedule_preview()
         self._run_download_job_for_url(cleaned)
+
+    def continue_queue_for_url(self, url: str) -> None:
+        """Start next queued item without heavy UI reset (batch advance)."""
+        cleaned = url.strip()
+        if not cleaned:
+            return
+        self._url_entry.delete(0, "end")
+        self._url_entry.insert(0, cleaned)
+        self._now_playing_title = None
+        cached = self._preview_cache.get(cleaned)
+        if cached and cached.title:
+            self._now_playing_title = cached.title.strip()
+        self._run_download_job_for_url(cleaned, queue_continue=True)
 
     def force_release_download_ui(self) -> None:
         """Recover when the worker finished but a terminal UI event was missed."""
@@ -556,7 +591,7 @@ class DownloadsView(ctk.CTkFrame):
         )
         self._download_btn.grid(row=0, column=4, sticky="e")
         self._sync_action_buttons()
-        self._on_sync_queue_ui()
+        self._on_sync_queue_structure()
         self.after_idle(self._on_view_configure)
         self.after_idle(lambda: self._apply_footer_button_layout(False))
 
@@ -760,7 +795,7 @@ class DownloadsView(ctk.CTkFrame):
             return
 
         if not preview.error:
-            self._history_meta_cache[url.strip()] = preview
+            self._preview_cache.put(preview)
 
         if self._is_downloading:
             return
@@ -1134,32 +1169,8 @@ class DownloadsView(ctk.CTkFrame):
         return None
 
     def _prefetch_history_meta(self, url: str) -> None:
-        """Fetch per-video title/thumbnail for history (preview UI pauses while downloading)."""
-        cleaned = url.strip()
-        if not cleaned or not is_youtube_url(cleaned):
-            return
-
-        def worker() -> None:
-            try:
-                meta = fetch_preview(cleaned)
-            except Exception:
-                logger.exception(
-                    "Falha ao obter metadados para historico: %s", cleaned[:80]
-                )
-                meta = VideoPreview(
-                    url=cleaned, title="", thumbnail_bytes=None, error="fetch failed"
-                )
-
-            def on_main() -> None:
-                if not meta.error:
-                    self._history_meta_cache[cleaned] = meta
-                    if meta.title:
-                        self._now_playing_title = meta.title.strip()
-                self._on_sync_queue_ui()
-
-            self.after(0, on_main)
-
-        threading.Thread(target=worker, daemon=True).start()
+        """Fetch per-video title/thumbnail for history and queue cards."""
+        self._preview_cache.request([url])
 
     def _record_history_entry(self, event: ProgressEvent) -> None:
         filepath = event.filepath
@@ -1167,55 +1178,90 @@ class DownloadsView(ctk.CTkFrame):
             return
 
         source_url = self._url_entry.get().strip()
-        meta = self._history_meta_cache.get(source_url)
+        meta = self._preview_cache.get(source_url)
+        defer_disk = self._has_pending_queue()
 
-        def do_add(preview: Optional[VideoPreview]) -> None:
+        def build_fields(preview: Optional[VideoPreview]) -> dict:
             title = (event.title or "").strip()
             if not title and preview and preview.title:
                 title = preview.title.strip()
             if not title:
                 title = os.path.basename(filepath)
-            channel_name = (preview.uploader or "").strip() if preview else ""
-            channel_url = (preview.channel_url or "").strip() if preview else ""
-            thumb_bytes = (
-                preview.thumbnail_bytes
-                if preview and preview.thumbnail_bytes
-                else None
-            )
-            self._on_add_history(
-                filepath,
-                title,
-                source_url,
-                channel_name=channel_name,
-                channel_url=channel_url,
-                thumbnail_bytes=thumb_bytes,
-            )
+            return {
+                "filepath": filepath,
+                "title": title,
+                "source_url": source_url,
+                "channel_name": (preview.uploader or "").strip() if preview else "",
+                "channel_url": (preview.channel_url or "").strip() if preview else "",
+                "thumbnail_bytes": (
+                    preview.thumbnail_bytes
+                    if preview and preview.thumbnail_bytes
+                    else None
+                ),
+            }
 
-        if meta is not None and not meta.error:
-            do_add(meta)
-            return
-
-        if not source_url or not is_youtube_url(source_url):
-            do_add(None)
-            return
-
-        def worker() -> None:
+        def resolve_preview() -> Optional[VideoPreview]:
+            if meta is not None and not meta.error:
+                return meta
+            if not source_url or not is_youtube_url(source_url):
+                return None
             try:
                 fetched = fetch_preview(source_url)
             except Exception:
                 logger.exception(
                     "Metadados do historico (fallback): %s", source_url[:80]
                 )
-                fetched = None
+                return None
+            if fetched and not fetched.error:
+                self._preview_cache.put(fetched)
+                return fetched
+            return None
 
-            def on_main() -> None:
-                if fetched and not fetched.error:
-                    self._history_meta_cache[source_url] = fetched
-                do_add(fetched if fetched and not fetched.error else None)
+        if defer_disk:
 
-            self.after(0, on_main)
+            def worker() -> None:
+                fields = build_fields(resolve_preview())
+                self._on_add_history_async(
+                    fields["filepath"],
+                    fields["title"],
+                    fields["source_url"],
+                    channel_name=fields["channel_name"],
+                    channel_url=fields["channel_url"],
+                    thumbnail_bytes=fields["thumbnail_bytes"],
+                )
 
-        threading.Thread(target=worker, daemon=True).start()
+            threading.Thread(target=worker, daemon=True).start()
+            return
+
+        fields = build_fields(meta if meta and not meta.error else None)
+        if fields["thumbnail_bytes"] is None and source_url and is_youtube_url(source_url):
+
+            def worker() -> None:
+                resolved = build_fields(resolve_preview())
+
+                def on_main(f: dict = resolved) -> None:
+                    self._on_add_history(
+                        f["filepath"],
+                        f["title"],
+                        f["source_url"],
+                        channel_name=f["channel_name"],
+                        channel_url=f["channel_url"],
+                        thumbnail_bytes=f["thumbnail_bytes"],
+                    )
+
+                self.after(0, on_main)
+
+            threading.Thread(target=worker, daemon=True).start()
+            return
+
+        self._on_add_history(
+            fields["filepath"],
+            fields["title"],
+            fields["source_url"],
+            channel_name=fields["channel_name"],
+            channel_url=fields["channel_url"],
+            thumbnail_bytes=fields["thumbnail_bytes"],
+        )
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
@@ -1266,7 +1312,7 @@ class DownloadsView(ctk.CTkFrame):
         self._last_progress_percent = 0.0
         self._set_download_status("Preparando próximo da fila…")
         self._sync_action_buttons()
-        self._on_sync_queue_ui()
+        self._on_sync_now_playing()
 
     def _release_download_ui(self) -> None:
         self._is_downloading = False
@@ -1275,7 +1321,7 @@ class DownloadsView(ctk.CTkFrame):
         self._now_playing_title = None
         self._set_controls_enabled(True)
         self._schedule_status_reset()
-        self._on_sync_queue_ui()
+        self._on_sync_queue_structure()
 
     def _start_download(self) -> None:
         if self._is_downloading or self._expanding_playlist:
@@ -1301,7 +1347,7 @@ class DownloadsView(ctk.CTkFrame):
 
         self._resolve_and_act(url, action="download")
 
-    def _run_download_job_for_url(self, url: str) -> None:
+    def _run_download_job_for_url(self, url: str, *, queue_continue: bool = False) -> None:
         cleaned = url.strip()
         if not cleaned:
             return
@@ -1325,14 +1371,17 @@ class DownloadsView(ctk.CTkFrame):
             audio_only=self._audio_only_var.get(),
             preferences=self._get_app_settings(),
         )
-        self._on_persist_settings()
-        self._prefetch_history_meta(cleaned)
+        if not queue_continue:
+            self._on_persist_settings()
+        if not self._preview_cache.get(cleaned):
+            self._prefetch_history_meta(cleaned)
 
         self._is_downloading = True
         if self._preview_after_id is not None:
             self.after_cancel(self._preview_after_id)
             self._preview_after_id = None
-        self._set_controls_enabled(False)
+        if not queue_continue:
+            self._set_controls_enabled(False)
         self._last_progress_percent = 0.0
         if self._status_reset_after_id is not None:
             self.after_cancel(self._status_reset_after_id)
@@ -1341,7 +1390,10 @@ class DownloadsView(ctk.CTkFrame):
         self._append_log(f"Iniciando download: {start_label}")
         self._set_download_status("Baixando…")
         self._sync_action_buttons()
-        self._on_sync_queue_ui()
+        if queue_continue:
+            self._on_sync_now_playing()
+        else:
+            self._on_sync_queue_structure()
 
         self._on_start_download(job)
 

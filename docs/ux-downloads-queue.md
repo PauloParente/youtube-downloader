@@ -7,7 +7,7 @@ Especificação do comportamento da tela **Downloads**, da tela **Fila** na side
 | Tela | Conteúdo |
 |------|----------|
 | **Downloads** | URL, preview, opções, log, **+ Fila**, **Baixar**, **Cancelar** (rodapé fixo) |
-| **Fila** (sidebar) | Card *Baixando agora*: miniatura, título, URL, status, barra, %, **Cancelar**, **Pular**; card *Na fila*: lista scroll, **🗑** por item |
+| **Fila** (sidebar) | Card *Baixando agora*: miniatura, título, URL, status, barra, %, **Cancelar**, **Pular**; *Na fila*: cards (estilo Histórico) com miniatura, título, duração e **🗑** |
 
 A barra de progresso detalhada e a lista de pendentes **não** ficam mais no scroll de Downloads.
 
@@ -16,7 +16,8 @@ A barra de progresso detalhada e a lista de pendentes **não** ficam mais no scr
 | Conceito | Descrição |
 |----------|-----------|
 | **Download atual** | Um job em execução; URL no campo Downloads durante o download; card *Baixando agora* na tela Fila |
-| **Fila (pendentes)** | URLs aguardando FIFO; lista na tela **Fila** **não** inclui o item em execução |
+| **Fila (pendentes)** | URLs aguardando FIFO; cards na tela **Fila** **não** incluem o item em execução; metadados via `PreviewCache` (`core/preview_cache.py`) em background; a UI actualiza **card a card** (sem reconstruir a lista inteira) |
+| **Transição entre vídeos** | Histórico gravado em background se ainda há fila; próximo job usa `continue_queue_for_url` (sem repersistir definições nem re-renderizar toda a fila) |
 
 Um único vídeo sem enfileirar = fila vazia na lista + **Baixar** no campo. Não há “modo sem fila” separado.
 
@@ -30,7 +31,7 @@ Um único vídeo sem enfileirar = fila vazia na lista + **Baixar** no campo. Nã
 ## Antes (ocioso)
 
 - Preview com debounce na URL do campo (Downloads).
-- **+ Fila**: resolve URL (expande playlist se for o caso); dedupe; log; **não** inicia download.
+- **+ Fila**: resolve URL (expande playlist se for o caso); dedupe; log; prefetch de título/miniatura/duração (`PreviewCache`, até 3 pedidos em paralelo); **não** inicia download.
 - **Baixar**:
   1. Campo com URL de **vídeo único** → inicia esse vídeo (fila não é consumida primeiro).
   2. Campo com **playlist** → expande, enfileira todos, `pop_next` e inicia o primeiro.

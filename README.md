@@ -104,7 +104,7 @@ python -m youtube_downloader
 - Modo somente áudio (MP3)
 - Barra de progresso e status do download atual na tela **Fila**; log de marcos na tela Downloads
 - Preferências em `settings.json` (pasta, qualidade, áudio e opções avançadas — formato WebM/MP4, **perfil de exportação** (H.264 compatível com Windows ou melhor qualidade), bitrate MP3, limite de banda, legendas, tema claro/escuro, `cookies.txt` e notificação ao concluir aplicados no download)
-- **Fila de downloads**: **+ Fila** na tela Downloads; acompanhe o vídeo atual e a lista de pendentes na sidebar **Fila** (miniatura, progresso, Cancelar, Pular, remover por item); processamento sequencial automático
+- **Fila de downloads**: **+ Fila** na tela Downloads; na sidebar **Fila**, cards com miniatura, título e duração (como o Histórico), progresso do vídeo atual, Cancelar, Pular e remover por item; processamento sequencial automático
 - Navegação por **sidebar**: Downloads, Fila, Biblioteca, Histórico, Configurações
 - Página **Biblioteca** — lista arquivos de mídia na pasta de destino
 - Página **Histórico** — cards com thumbnail, nome do canal (link para o YouTube) e botão para abrir o vídeo no site (`history.json`); abrir arquivo/pasta, **Baixar de novo**, remover ou **Limpar histórico** (não apaga arquivos no disco)
@@ -126,7 +126,7 @@ Veja o backlog futuro em [ROADMAP.md](ROADMAP.md).
 
 **Playlists:** ao colar um link de playlist (`playlist?list=…`) ou ao escolher *Playlist inteira* quando a URL traz `list=` junto com o vídeo, o app obtém os vídeos e coloca cada um na fila. **Baixar** com uma playlist no campo enfileira todos e inicia o primeiro; os restantes seguem em sequência. URL só com `watch?v=` baixa apenas esse vídeo.
 
-Use **+ Fila** para enfileirar sem iniciar (também durante um download). Abra **Fila** na sidebar para ver o download atual (miniatura e progresso), **Pular** para o próximo ou **🗑** por item nos pendentes. **Cancelar** no rodapé de Downloads ou na tela Fila interrompe tudo e esvazia a fila. **Histórico** registra cada vídeo concluído; **Biblioteca** lista arquivos na pasta de destino. A fila não é salva ao fechar o app.
+Use **+ Fila** para enfileirar sem iniciar (também durante um download). Abra **Fila** na sidebar: o download atual com progresso e, abaixo, um card por vídeo pendente (miniatura, título e duração). **Pular** avança na fila; **🗑** remove um pendente. **Cancelar** no rodapé de Downloads ou na tela Fila interrompe tudo e esvazia a fila. **Histórico** registra cada vídeo concluído; **Biblioteca** lista arquivos na pasta de destino. A fila não é salva ao fechar o app.
 
 ### Redimensionar a janela
 
