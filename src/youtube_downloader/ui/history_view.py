@@ -1,5 +1,6 @@
 """Histórico de downloads — layout em tabela conforme mockup."""
 
+import os
 from collections.abc import Callable
 
 import customtkinter as ctk
@@ -24,11 +25,16 @@ class HistoryView(ctk.CTkFrame):
     def __init__(
         self,
         master: ctk.CTkBaseClass,
-        on_open_path: Callable[[str], None],
+        *,
+        on_open_folder: Callable[[str], None],
+        on_open_file: Callable[[str], None],
+        on_redownload: Callable[[str, str], None],
         **kwargs,
     ) -> None:
         super().__init__(master, fg_color="transparent", **kwargs)
-        self._on_open_path = on_open_path
+        self._on_open_folder = on_open_folder
+        self._on_open_file = on_open_file
+        self._on_redownload = on_redownload
         self._entries: list[DownloadHistoryEntry] = []
         self._filter_var = ctk.StringVar()
         self._filter_var.trace_add("write", lambda *_: self._render_rows())
@@ -158,18 +164,23 @@ class HistoryView(ctk.CTkFrame):
         row.grid_columnconfigure(1, weight=1)
 
         icon_char = "♪" if entry.is_audio else "▶"
-        ctk.CTkLabel(
+        icon_box = ctk.CTkFrame(
             row,
-            text=icon_char,
             width=36,
             height=36,
             fg_color="transparent",
             border_width=1,
             border_color=CARD_BORDER,
             corner_radius=6,
+        )
+        icon_box.grid(row=0, column=0, padx=(8, 12))
+        icon_box.grid_propagate(False)
+        ctk.CTkLabel(
+            icon_box,
+            text=icon_char,
             font=ctk.CTkFont(size=14),
             text_color=TEXT_SECONDARY,
-        ).grid(row=0, column=0, padx=(8, 12))
+        ).place(relx=0.5, rely=0.5, anchor="center")
 
         ctk.CTkLabel(
             row,
@@ -188,18 +199,23 @@ class HistoryView(ctk.CTkFrame):
             anchor="w",
         ).grid(row=0, column=2, padx=(0, 8))
 
-        ctk.CTkLabel(
+        fmt_box = ctk.CTkFrame(
             row,
-            text=entry.format_ext,
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=TEXT_SECONDARY,
             width=52,
             height=26,
             fg_color="transparent",
             border_width=1,
             border_color=CARD_BORDER,
             corner_radius=4,
-        ).grid(row=0, column=3, padx=(0, 8))
+        )
+        fmt_box.grid(row=0, column=3, padx=(0, 8))
+        fmt_box.grid_propagate(False)
+        ctk.CTkLabel(
+            fmt_box,
+            text=entry.format_ext,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=TEXT_SECONDARY,
+        ).place(relx=0.5, rely=0.5, anchor="center")
 
         ctk.CTkLabel(
             row,
@@ -211,11 +227,33 @@ class HistoryView(ctk.CTkFrame):
         ).grid(row=0, column=4, padx=(0, 8))
 
         path = entry.filepath
+        actions = ctk.CTkFrame(row, fg_color="transparent")
+        actions.grid(row=0, column=5, padx=(0, 8))
         ctk.CTkButton(
-            row,
+            actions,
             text="📁",
-            width=36,
-            height=36,
-            command=lambda p=path: self._on_open_path(p),
+            width=32,
+            height=32,
+            command=lambda p=path: self._on_open_folder(p),
             **SECONDARY_BTN,
-        ).grid(row=0, column=5, padx=(0, 8))
+        ).pack(side="left", padx=(0, 4))
+        file_state = "normal" if os.path.isfile(path) else "disabled"
+        ctk.CTkButton(
+            actions,
+            text="📄",
+            width=32,
+            height=32,
+            state=file_state,
+            command=lambda p=path: self._on_open_file(p),
+            **SECONDARY_BTN,
+        ).pack(side="left", padx=(0, 4))
+        redo_state = "normal" if entry.source_url.strip() else "disabled"
+        ctk.CTkButton(
+            actions,
+            text="↻",
+            width=32,
+            height=32,
+            state=redo_state,
+            command=lambda u=entry.source_url, t=entry.title: self._on_redownload(u, t),
+            **SECONDARY_BTN,
+        ).pack(side="left")

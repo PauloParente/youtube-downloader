@@ -101,9 +101,31 @@ class SettingsView(ctk.CTkScrollableFrame):
             **OUTLINE_BTN,
         ).grid(row=0, column=1)
 
-        self._field_label(general_body, 2, "Idioma da Interface")
+        self._field_label(general_body, 2, "Tema da interface")
+        self._dark_theme_var = tk.BooleanVar(value=True)
+        ctk.CTkSwitch(
+            general_body,
+            text="Modo escuro",
+            variable=self._dark_theme_var,
+            progress_color=ACCENT,
+            button_color=ACCENT,
+            button_hover_color=ACCENT_HOVER,
+            font=ctk.CTkFont(size=12),
+            text_color=TEXT_PRIMARY,
+        ).grid(row=3, column=0, sticky="w", pady=(0, 12))
+
+        self._field_label(general_body, 4, "Idioma das legendas")
         self._language_combo = self._combo(general_body, _LANGUAGE_OPTIONS)
-        self._language_combo.grid(row=3, column=0, sticky="ew", pady=(0, 4))
+        self._language_combo.grid(row=5, column=0, sticky="ew", pady=(0, 4))
+        ctk.CTkLabel(
+            general_body,
+            text="Usado ao baixar legendas; não altera os textos da interface.",
+            font=ctk.CTkFont(size=11),
+            text_color=TEXT_MUTED,
+            anchor="w",
+            wraplength=520,
+            justify="left",
+        ).grid(row=6, column=0, sticky="w", pady=(0, 4))
 
         quality_body = self._add_card(
             3, "HQ", "Qualidade e Formato", pad, pady_bottom=16
@@ -186,6 +208,34 @@ class SettingsView(ctk.CTkScrollableFrame):
             "Ao colar link de playlist, marcar opção automaticamente.",
             self._playlist_var,
         )
+
+        self._field_label(advanced_body, 8, "Arquivo de cookies (cookies.txt)")
+        cookies_row = ctk.CTkFrame(advanced_body, fg_color="transparent")
+        cookies_row.grid(row=9, column=0, sticky="ew", pady=(0, 8))
+        cookies_row.grid_columnconfigure(0, weight=1)
+        self._cookies_var = tk.StringVar()
+        ctk.CTkEntry(
+            cookies_row,
+            textvariable=self._cookies_var,
+            placeholder_text="Caminho para cookies.txt (opcional)",
+            **ENTRY_STYLE,
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkButton(
+            cookies_row,
+            text="📁",
+            width=40,
+            command=self._browse_cookies,
+            **OUTLINE_BTN,
+        ).grid(row=0, column=1)
+        ctk.CTkLabel(
+            advanced_body,
+            text="Exporte cookies do navegador para conteúdo restrito. Use por sua conta e risco.",
+            font=ctk.CTkFont(size=11),
+            text_color=TEXT_MUTED,
+            anchor="w",
+            wraplength=520,
+            justify="left",
+        ).grid(row=10, column=0, sticky="w", pady=(0, 4))
 
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.grid(row=5, column=0, sticky="ew", padx=pad, pady=(8, 24))
@@ -315,9 +365,11 @@ class SettingsView(ctk.CTkScrollableFrame):
 
     def load_settings(self, settings: AppSettings) -> None:
         self._output_dir.set(settings.output_dir)
+        self._dark_theme_var.set(settings.appearance_mode == "dark")
         self._language_combo.set(
             _LANGUAGE_TO_LABEL.get(settings.language, _LANGUAGE_OPTIONS[0])
         )
+        self._cookies_var.set(settings.cookies_file)
         self._quality_combo.set(
             QUALITY_DISPLAY_LABELS.get(settings.quality, QUALITY_DISPLAY_LABELS["1080p"])
         )
@@ -340,6 +392,14 @@ class SettingsView(ctk.CTkScrollableFrame):
         )
         if folder:
             self._output_dir.set(folder)
+
+    def _browse_cookies(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Arquivo cookies.txt",
+            filetypes=[("Netscape cookies", "*.txt"), ("Todos", "*.*")],
+        )
+        if path:
+            self._cookies_var.set(path)
 
     def _restore_defaults(self) -> None:
         self.load_settings(AppSettings.defaults())
@@ -375,6 +435,8 @@ class SettingsView(ctk.CTkScrollableFrame):
             bandwidth_limit_kbps=bandwidth,
             notify_on_complete=self._notify_var.get(),
             auto_download_subtitles=self._subtitles_var.get(),
+            appearance_mode="dark" if self._dark_theme_var.get() else "light",
+            cookies_file=self._cookies_var.get().strip(),
         )
 
     def _save(self) -> None:
