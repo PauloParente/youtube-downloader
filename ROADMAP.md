@@ -21,7 +21,7 @@ Estado do produto em relação ao código na branch `main`. Para arquitetura e c
 - Ícones de atalho no topo (configurações, ajuda)
 
 ### Fase 3 — Manutenção
-- Testes pytest em `tests/` (25 testes, foco em `core/`)
+- Testes pytest em `tests/` (35+ testes, foco em `core/`)
 - Script `update-deps.ps1`
 - Checklist de release no README
 - Repositório no GitHub: CI (Windows + Ubuntu), CONTRIBUTING, `settings.example.json`
@@ -37,7 +37,7 @@ Estado do produto em relação ao código na branch `main`. Para arquitetura e c
 | Área | O que existe hoje |
 |------|-------------------|
 | **Downloads** | Botões Abrir pasta / Abrir arquivo; status pós-download; marcar playlist no preview se a opção padrão estiver ativa |
-| **Fila** | `+ Adicionar à fila` + processamento **sequencial** automático (`core/download_queue.py`) |
+| **Fila** | Lista de URLs pendentes, remover item, limpar fila; processamento **sequencial** (`core/download_queue.py`) |
 | **Histórico** | Abrir pasta/arquivo, **baixar de novo** (↻), **excluir** (🗑); `source_url` em `history.json` |
 | **Biblioteca** | Lista + **filtro por nome** na pasta de destino (`ui/library_view.py`, `core/library_scan.py`) |
 | **Configurações** | Tema claro/escuro (`appearance_mode`); caminho para `cookies.txt`; rótulo **Idioma das legendas** (não traduz a UI) |
@@ -52,7 +52,7 @@ Itens **não** implementados ou só parcialmente.
 
 | Item | Situação atual | Próximo passo sugerido |
 |------|----------------|------------------------|
-| **Fila de downloads (UI)** | Contador + enfileirar URL; sem lista editável | Mostrar URLs na fila, remover item, limpar fila |
+| **Fila de downloads (UI)** | Lista, remover, limpar; spec em [docs/ux-downloads-queue.md](docs/ux-downloads-queue.md) | Persistir fila; URL editável ao enfileirar durante download; *Parar tudo* |
 | **Biblioteca** | Lista + filtro por nome; botão Abrir arquivo | Abrir pasta de destino, miniaturas ou metadados opcionais |
 | **Arrastar URL** | Não feito | Drag-and-drop (ex. `tkinterdnd2`); validar Windows e Linux |
 | **MKV** | Reconhecido no scan; não é opção de merge | Estender `video_format` + testes FFmpeg |
@@ -70,7 +70,7 @@ Itens **não** implementados ou só parcialmente.
 
 ## Ordem sugerida para o backlog
 
-1. Fila com **lista visível** e remoção de itens
+1. ~~Fila com lista visível~~ (feito)
 2. Biblioteca: **abrir pasta** de destino e polish da listagem
 3. Drag-and-drop de URL
 4. MKV e demais formatos, se houver demanda

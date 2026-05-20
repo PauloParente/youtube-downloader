@@ -182,11 +182,30 @@ class YoutubeDownloaderApp(ctk.CTk):
         if self._history_view is not None:
             self._history_view.set_entries(self._history_entries)
 
-    def _enqueue_download_url(self, url: str) -> None:
-        self._download_queue.add(url)
+    def _enqueue_download_url(self, url: str) -> bool:
+        added = self._download_queue.add(url)
+        if self._downloads_view is not None:
+            self._downloads_view.refresh_queue_panel()
+        return added
 
-    def _get_queue_count(self) -> int:
-        return len(self._download_queue)
+    def _get_queue_snapshot(self) -> list[str]:
+        return self._download_queue.snapshot()
+
+    def _remove_queue_at(self, index: int) -> None:
+        self._download_queue.remove_at(index)
+        if self._downloads_view is not None:
+            self._downloads_view.refresh_queue_panel()
+
+    def _clear_download_queue(self) -> None:
+        self._download_queue.clear()
+        if self._downloads_view is not None:
+            self._downloads_view.refresh_queue_panel()
+
+    def _pop_next_queue_url(self) -> str | None:
+        url = self._download_queue.pop_next()
+        if self._downloads_view is not None:
+            self._downloads_view.refresh_queue_panel()
+        return url
 
     def _start_next_queued_if_idle(self) -> None:
         if self._downloads_view is None or self._downloads_view.is_downloading:
@@ -194,7 +213,7 @@ class YoutubeDownloaderApp(ctk.CTk):
         next_url = self._download_queue.pop_next()
         if not next_url:
             return
-        self._downloads_view.refresh_queue_label()
+        self._downloads_view.refresh_queue_panel()
         self._downloads_view.start_download_for_url(next_url)
 
     def _build_ui(self) -> None:
@@ -228,7 +247,10 @@ class YoutubeDownloaderApp(ctk.CTk):
             on_add_history=self._add_history_entry,
             on_get_app_settings=lambda: self._settings,
             on_enqueue_url=self._enqueue_download_url,
-            get_queue_count=self._get_queue_count,
+            get_queue_snapshot=self._get_queue_snapshot,
+            on_remove_queue_at=self._remove_queue_at,
+            on_clear_queue=self._clear_download_queue,
+            pop_next_queue_url=self._pop_next_queue_url,
             initial_output_dir=str(DEFAULT_DOWNLOADS_DIR),
         )
         self._view_frames["download"] = self._downloads_view
@@ -499,13 +521,22 @@ class YoutubeDownloaderApp(ctk.CTk):
         self._download_thread = threading.Thread(target=worker, daemon=True)
         self._download_thread.start()
 
+    def _drain_event_queue_sync(self) -> None:
+        """Processa eventos pendentes na main thread (evita corrida com o fim do worker)."""
+        while True:
+            try:
+                event = self._event_queue.get_nowait()
+            except queue.Empty:
+                break
+            self._handle_event(event)
+
     def _on_download_worker_finished(self) -> None:
+        self._drain_event_queue_sync()
         if self._downloads_view is not None and self._downloads_view.is_downloading:
             logger.warning(
                 "Worker de download terminou, mas a UI ainda esta em modo download"
             )
             self._downloads_view.force_release_download_ui()
-        self._start_next_queued_if_idle()
 
     def _poll_queue(self) -> None:
         while True:
@@ -513,44 +544,49 @@ class YoutubeDownloaderApp(ctk.CTk):
                 event = self._event_queue.get_nowait()
             except queue.Empty:
                 break
-            try:
-                self._handle_event(event)
-            except Exception:
-                logger.exception(
-                    "Erro ao processar evento da fila: %s", event.event_type.value
-                )
-                if self._downloads_view is not None and event.event_type in (
-                    EventType.DONE,
-                    EventType.ERROR,
-                    EventType.CANCELLED,
-                ):
-                    self._downloads_view.force_release_download_ui()
-                self._active_download_job = None
+            self._handle_event(event)
         self.after(50, self._poll_queue)
 
     def _handle_event(self, event: ProgressEvent) -> None:
-        if self._downloads_view is not None:
-            self._downloads_view.handle_progress_event(event)
+        try:
+            if self._downloads_view is not None:
+                self._downloads_view.handle_progress_event(event)
 
-        job = self._active_download_job
-        if job is None:
-            return
+            job = self._active_download_job
+            if job is None:
+                return
 
-        if event.event_type == EventType.DONE:
-            try:
-                if job.notify_on_complete:
-                    name = event.title or (
-                        os.path.basename(event.filepath) if event.filepath else "Download"
-                    )
-                    notify_download_complete(
-                        APP_TITLE,
-                        f"Download concluído: {name}",
-                    )
-            except Exception:
-                logger.exception("Falha ao exibir notificacao de download")
-            self._active_download_job = None
-            self._start_next_queued_if_idle()
-        elif event.event_type in (EventType.ERROR, EventType.CANCELLED):
+            if event.event_type == EventType.DONE:
+                try:
+                    if job.notify_on_complete:
+                        name = event.title or (
+                            os.path.basename(event.filepath)
+                            if event.filepath
+                            else "Download"
+                        )
+                        notify_download_complete(
+                            APP_TITLE,
+                            f"Download concluído: {name}",
+                        )
+                except Exception:
+                    logger.exception("Falha ao exibir notificacao de download")
+                self._active_download_job = None
+                self._start_next_queued_if_idle()
+            elif event.event_type == EventType.CANCELLED:
+                self._active_download_job = None
+                self._start_next_queued_if_idle()
+            elif event.event_type == EventType.ERROR:
+                self._active_download_job = None
+        except Exception:
+            logger.exception(
+                "Erro ao processar evento da fila: %s", event.event_type.value
+            )
+            if self._downloads_view is not None and event.event_type in (
+                EventType.DONE,
+                EventType.ERROR,
+                EventType.CANCELLED,
+            ):
+                self._downloads_view.force_release_download_ui()
             self._active_download_job = None
 
 

@@ -103,14 +103,14 @@ Nunca atualizar CustomTkinter a partir do worker.
 | Download vídeo/playlist, qualidade, áudio MP3, merge MP4/WebM | Implementado (`downloader`, `build_ytdl_opts`) |
 | Preview título/thumbnail | Implementado (`metadata`) |
 | Sidebar, Configurações, Histórico, Biblioteca | Implementado (`ui/*_view.py`) |
-| Fila de downloads | Implementado (sequencial; UI sem lista editável — ver [ROADMAP.md](ROADMAP.md)) |
+| Fila de downloads | Implementado (sequencial; lista na UI com remover/limpar — ver [ROADMAP.md](ROADMAP.md)) |
 | Abrir pasta/arquivo, histórico (↻, 📄) | Implementado |
 | Persistência `settings.json` / `history.json` | Implementado |
 | Campos avançados + cookies + tema | Implementado em `DownloadJob` / `AppSettings` / `build_ytdl_opts` |
 | Perfil de exportação (`export_profile`) | `compatible` (H.264/AAC ou VP9/Opus em WebM) vs `max_quality`; ver `core/format_selectors.py` |
 | Idioma (`AppSettings.language`) | Só legendas no yt-dlp; UI em português (rótulo “Idioma das legendas”) |
 | Notificações ao concluir | Implementado (`core/notifications.py`) |
-| Backlog de produto | [ROADMAP.md](ROADMAP.md) — fila com lista UI, drag-and-drop, MKV, i18n, etc. |
+| Backlog de produto | [ROADMAP.md](ROADMAP.md) — drag-and-drop, MKV, i18n, etc. |
 
 **Regra:** opções avançadas só valem no download após **Salvar** em Configurações (ou já persistidas em `settings.json`). Campos da tela Downloads (pasta, qualidade, áudio, playlist) são gravados ao baixar.
 
@@ -124,6 +124,20 @@ Nunca atualizar CustomTkinter a partir do worker.
 - Diff mínimo; seguir estilo dos arquivos vizinhos.
 
 Detalhes: regras em [`.cursor/rules/`](.cursor/rules/) e [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Skills Cursor (playbooks)
+
+Procedimentos em [`.cursor/skills/`](.cursor/skills/) — invoque pelo nome ou quando a tarefa combinar com a descrição.
+
+| Skill | Quando usar |
+|-------|-------------|
+| `youtube-downloader-feature` | Opção → `AppSettings` → `DownloadJob` → `build_ytdl_opts` |
+| `youtube-downloader-ui-view` | Telas em `ui/`, wiring em `app.py`, threading — ver [docs/ux-downloads-queue.md](docs/ux-downloads-queue.md) |
+| `youtube-downloader-release` | Versão, `build.ps1`, zip, FFmpeg em `dist/` |
+| `youtube-downloader-code-review` | Revisar diff antes do merge (read-only primeiro) |
+| `youtube-downloader-refactor-extract` | Extrair de `app.py` sem big-bang |
+
+Fluxo sugerido: implementar → `pytest` → `youtube-downloader-code-review` → corrigir → PR.
 
 ## Backlog de refatoração
 
@@ -163,3 +177,5 @@ Ver regra [`.cursor/rules/refactoring.mdc`](.cursor/rules/refactoring.mdc).
 - [README.md](README.md) — instalação, uso, release
 - [ROADMAP.md](ROADMAP.md) — backlog de produto
 - [CONTRIBUTING.md](CONTRIBUTING.md) — PR e Git
+- [docs/ux-downloads-queue.md](docs/ux-downloads-queue.md) — fluxo URL, fila, Baixar, cancelar
+- [`.cursor/skills/`](.cursor/skills/) — playbooks Cursor

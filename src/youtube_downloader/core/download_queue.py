@@ -9,10 +9,20 @@ class DownloadQueue:
 
     _urls: list[str] = field(default_factory=list)
 
-    def add(self, url: str) -> None:
+    def add(self, url: str) -> bool:
+        """Append URL if non-empty and not already queued. Returns True if added."""
         cleaned = url.strip()
-        if cleaned and cleaned not in self._urls:
-            self._urls.append(cleaned)
+        if not cleaned or cleaned in self._urls:
+            return False
+        self._urls.append(cleaned)
+        return True
+
+    def remove_at(self, index: int) -> bool:
+        """Remove pending item by index (0-based). Returns True if removed."""
+        if index < 0 or index >= len(self._urls):
+            return False
+        del self._urls[index]
+        return True
 
     def pop_next(self) -> str | None:
         if not self._urls:

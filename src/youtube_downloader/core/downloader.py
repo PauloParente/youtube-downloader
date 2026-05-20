@@ -5,7 +5,7 @@ import os
 import re
 import threading
 import time
-from typing import Callable, Optional
+from typing import Callable, Iterable, Optional
 
 import yt_dlp
 
@@ -34,6 +34,46 @@ _INTERMEDIATE_FRAGMENT_RE = re.compile(r"\.f\d+\.", re.IGNORECASE)
 _ORPHAN_FRAGMENT_RE = re.compile(r"\.f\d+\.[^.]+$", re.IGNORECASE)
 
 _KBPS_TO_BYTES_PER_SEC = 125  # 1 kbps ≈ 125 bytes/s for yt-dlp ratelimit
+
+
+def cleanup_partial_download_files(
+    output_dir: str,
+    tracked_paths: Iterable[str],
+    *,
+    scan_temp_artifacts: bool = True,
+) -> list[str]:
+    """Remove incomplete files left after the user cancels a download."""
+    deleted: list[str] = []
+    seen: set[str] = set()
+
+    def _delete(path: str) -> None:
+        norm = os.path.normpath(path)
+        if norm in seen:
+            return
+        seen.add(norm)
+        try:
+            if os.path.isfile(norm) or os.path.islink(norm):
+                os.remove(norm)
+                deleted.append(norm)
+        except OSError as exc:
+            logger.warning("Could not remove partial file %s: %s", norm, exc)
+
+    for raw in tracked_paths:
+        if raw:
+            _delete(raw)
+
+    if not output_dir or not os.path.isdir(output_dir):
+        return deleted
+
+    for orphan in YoutubeDownloader._find_merge_orphans(output_dir):
+        _delete(orphan)
+
+    if scan_temp_artifacts:
+        for name in os.listdir(output_dir):
+            if name.endswith(".part") or name.endswith(".ytdl"):
+                _delete(os.path.join(output_dir, name))
+
+    return deleted
 
 
 def build_ytdl_opts(job: DownloadJob, ffmpeg_dir: str) -> dict:
@@ -97,6 +137,8 @@ class YoutubeDownloader:
         self._playlist_completed = 0
         self._playlist_total: Optional[int] = None
         self._last_playlist_index: Optional[int] = None
+        self._current_item_paths: set[str] = set()
+        self._committed_paths: set[str] = set()
 
     def cancel(self) -> None:
         self._cancel.set()
@@ -109,6 +151,56 @@ class YoutubeDownloader:
         self._playlist_completed = 0
         self._playlist_total = None
         self._last_playlist_index = None
+        self._current_item_paths = set()
+        self._committed_paths = set()
+
+    def _register_download_path(self, path: Optional[str]) -> None:
+        if not path:
+            return
+        norm = os.path.normpath(path)
+        if norm in self._committed_paths:
+            return
+        self._current_item_paths.add(norm)
+
+    def _commit_download_path(self, path: Optional[str]) -> None:
+        if not path:
+            return
+        norm = os.path.normpath(path)
+        self._committed_paths.add(norm)
+        self._current_item_paths.discard(norm)
+
+    def _cleanup_cancelled_download(self, job: DownloadJob) -> list[str]:
+        paths = set(self._current_item_paths)
+        if (
+            self._last_filepath
+            and self._last_filepath not in self._committed_paths
+        ):
+            paths.add(os.path.normpath(self._last_filepath))
+        return cleanup_partial_download_files(job.output_dir, paths)
+
+    def _emit_cancelled(
+        self,
+        job: DownloadJob,
+        on_event: Callable[[ProgressEvent], None],
+        *,
+        log_message: str,
+    ) -> None:
+        removed = self._cleanup_cancelled_download(job)
+        if removed:
+            logger.info("Partial files removed after cancel: %s", removed)
+        logger.info("%s: %s", log_message, job.url)
+        detail = "Download cancelado."
+        if removed:
+            detail = (
+                "Download cancelado. "
+                f"{len(removed)} arquivo(s) parcial(is) removido(s)."
+            )
+        on_event(
+            ProgressEvent(
+                event_type=EventType.CANCELLED,
+                message=detail,
+            )
+        )
 
     @staticmethod
     def ffmpeg_available() -> bool:
@@ -226,12 +318,10 @@ class YoutubeDownloader:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([job.url])
             if self._cancel.is_set():
-                logger.info("Download cancelado (usuario): %s", job.url)
-                on_event(
-                    ProgressEvent(
-                        event_type=EventType.CANCELLED,
-                        message="Download cancelado.",
-                    )
+                self._emit_cancelled(
+                    job,
+                    on_event,
+                    log_message="Download cancelado (usuario)",
                 )
             else:
                 done_message = "Download concluído com sucesso."
@@ -258,21 +348,17 @@ class YoutubeDownloader:
                     )
                 )
         except DownloadCancelled:
-            logger.info("Download cancelado (hook): %s", job.url)
-            on_event(
-                ProgressEvent(
-                    event_type=EventType.CANCELLED,
-                    message="Download cancelado.",
-                )
+            self._emit_cancelled(
+                job,
+                on_event,
+                log_message="Download cancelado (hook)",
             )
         except Exception as exc:
             if self._cancel.is_set():
-                logger.info("Download cancelado com exceção: %s", job.url)
-                on_event(
-                    ProgressEvent(
-                        event_type=EventType.CANCELLED,
-                        message="Download cancelado.",
-                    )
+                self._emit_cancelled(
+                    job,
+                    on_event,
+                    log_message="Download cancelado com exceção",
                 )
             else:
                 logger.error("Download falhou: %s | %s", job.url, exc)
@@ -354,6 +440,8 @@ class YoutubeDownloader:
                 filepath = info.get("filepath")
                 if filepath and os.path.isfile(filepath):
                     self._last_filepath = filepath
+                    self._register_download_path(filepath)
+                    self._commit_download_path(filepath)
             elif status == "processing" and not merge_status_active:
                 merge_status_active = True
                 self._emit_merge_status(on_event)
@@ -380,6 +468,9 @@ class YoutubeDownloader:
                 title = info.get("title") or self._current_title
                 if title:
                     self._current_title = title
+
+                self._register_download_path(data.get("tmpfilename"))
+                self._register_download_path(data.get("filename"))
 
                 playlist_count = info.get("playlist_count")
                 if playlist_count and job.download_playlist:
@@ -413,6 +504,7 @@ class YoutubeDownloader:
 
             elif status == "finished":
                 filename = data.get("filename", "")
+                self._register_download_path(filename)
                 basename = os.path.basename(filename)
                 if self._is_intermediate_fragment(filename):
                     on_event(
@@ -427,6 +519,7 @@ class YoutubeDownloader:
                 else:
                     if filename and os.path.isfile(filename):
                         self._last_filepath = filename
+                        self._commit_download_path(filename)
                     playlist_index = info.get("playlist_index")
                     if (
                         job.download_playlist

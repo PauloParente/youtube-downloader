@@ -33,6 +33,9 @@ O código do app está sob MIT ([LICENSE](LICENSE)). Ao distribuir o `.exe` gera
 
 - **[AGENTS.md](AGENTS.md)** — mapa do projeto, fluxos (download, preview), o que está implementado vs. pendente, backlog de refatoração.
 - **[`.cursor/rules/`](.cursor/rules/)** — regras automáticas do Cursor (`project-core`, `python-standards`, `ui-customtkinter`, `refactoring`, `tests`).
+- **[`.cursor/skills/`](.cursor/skills/)** — playbooks (`youtube-downloader-feature`, `ui-view`, `release`, `code-review`, `refactor-extract`).
+
+**Fluxo sugerido:** implementar → `python -m pytest` → revisar com `youtube-downloader-code-review` → corrigir → PR.
 
 Leia o `AGENTS.md` antes de mudanças grandes em `app.py` ou ao ligar opções de Configurações ao downloader.
 

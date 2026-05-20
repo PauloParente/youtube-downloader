@@ -60,6 +60,8 @@ logger = get_logger(__name__)
 PREVIEW_DEBOUNCE_MS = 600
 THUMB_DISPLAY_SIZE = (240, 135)
 SECTION_GAP = 10
+QUEUE_SCROLL_HEIGHT = 132
+QUEUE_URL_TRUNCATE = 58
 DEFAULT_STATUS_TEXT = "Pronto para baixar."
 
 
@@ -74,8 +76,11 @@ class DownloadsView(ctk.CTkFrame):
         on_persist_settings: Callable[[], None],
         on_add_history: Callable[[str, Optional[str], str], None],
         on_get_app_settings: Callable[[], AppSettings],
-        on_enqueue_url: Callable[[str], None],
-        get_queue_count: Callable[[], int],
+        on_enqueue_url: Callable[[str], bool],
+        get_queue_snapshot: Callable[[], list[str]],
+        on_remove_queue_at: Callable[[int], None],
+        on_clear_queue: Callable[[], None],
+        pop_next_queue_url: Callable[[], Optional[str]],
         initial_output_dir: str,
         **kwargs,
     ) -> None:
@@ -87,7 +92,11 @@ class DownloadsView(ctk.CTkFrame):
         self._on_add_history = on_add_history
         self._get_app_settings = on_get_app_settings
         self._on_enqueue_url = on_enqueue_url
-        self._get_queue_count = get_queue_count
+        self._get_queue_snapshot = get_queue_snapshot
+        self._on_remove_queue_at = on_remove_queue_at
+        self._on_clear_queue = on_clear_queue
+        self._pop_next_queue_url = pop_next_queue_url
+        self._queue_rows_inner: Optional[ctk.CTkFrame] = None
 
         self._is_downloading = False
         self._output_dir = tk.StringVar(value=initial_output_dir)
@@ -132,8 +141,8 @@ class DownloadsView(ctk.CTkFrame):
     def reset_download_status(self) -> None:
         self._reset_download_status()
 
-    def refresh_queue_label(self) -> None:
-        self._update_queue_label()
+    def refresh_queue_panel(self) -> None:
+        self._update_queue_panel()
 
     def set_url_and_focus(self, url: str) -> None:
         if self._is_downloading:
@@ -226,24 +235,7 @@ class DownloadsView(ctk.CTkFrame):
         )
         self._clear_url_btn.grid(row=0, column=2)
 
-        queue_row = ctk.CTkFrame(self, fg_color="transparent")
-        queue_row.grid(row=2, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
-        queue_row.grid_columnconfigure(0, weight=1)
-        self._queue_label = ctk.CTkLabel(
-            queue_row,
-            text="Fila vazia",
-            anchor="w",
-            font=ctk.CTkFont(size=11),
-            text_color=TEXT_MUTED,
-        )
-        self._queue_label.grid(row=0, column=0, sticky="w")
-        ctk.CTkButton(
-            queue_row,
-            text="+ Adicionar à fila",
-            width=140,
-            command=self._enqueue_current_url,
-            **SECONDARY_BTN,
-        ).grid(row=0, column=1, padx=(8, 0))
+        self._build_queue_section(cp)
 
         mid = ctk.CTkFrame(self, fg_color="transparent")
         mid.grid(row=3, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="nsew")
@@ -518,7 +510,149 @@ class DownloadsView(ctk.CTkFrame):
         )
         self._download_btn.grid(row=0, column=4, sticky="e")
         self._sync_cancel_button()
-        self._update_queue_label()
+        self._update_queue_panel()
+
+    def _build_queue_section(self, pad: int) -> None:
+        self._queue_card = ctk.CTkFrame(self, **CARD_STYLE)
+        self._queue_card.grid(row=2, column=0, padx=pad, pady=(0, SECTION_GAP), sticky="ew")
+        self._queue_card.grid_columnconfigure(0, weight=1)
+
+        header = ctk.CTkFrame(self._queue_card, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 6))
+        header.grid_columnconfigure(0, weight=1)
+
+        self._queue_title_label = ctk.CTkLabel(
+            header,
+            text="Fila de downloads",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=TEXT_PRIMARY,
+            anchor="w",
+        )
+        self._queue_title_label.grid(row=0, column=0, sticky="w")
+
+        self._clear_queue_btn = ctk.CTkButton(
+            header,
+            text="Limpar fila",
+            width=100,
+            command=self._clear_queue,
+            state="disabled",
+            **SECONDARY_BTN,
+        )
+        self._clear_queue_btn.grid(row=0, column=1, padx=(8, 0))
+
+        self._queue_active_label = ctk.CTkLabel(
+            self._queue_card,
+            text="",
+            anchor="w",
+            font=ctk.CTkFont(size=11),
+            text_color=TEXT_MUTED,
+            wraplength=640,
+            justify="left",
+        )
+        self._queue_active_label.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 4))
+        self._queue_active_label.grid_remove()
+
+        self._queue_scroll = ctk.CTkScrollableFrame(
+            self._queue_card,
+            height=QUEUE_SCROLL_HEIGHT,
+            fg_color=("gray18", "gray14"),
+            corner_radius=6,
+        )
+        self._queue_scroll.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 8))
+        self._queue_scroll.grid_columnconfigure(0, weight=1)
+
+        self._queue_rows_inner = ctk.CTkFrame(self._queue_scroll, fg_color="transparent")
+        self._queue_rows_inner.grid(row=0, column=0, sticky="ew")
+        self._queue_rows_inner.grid_columnconfigure(1, weight=1)
+
+        actions = ctk.CTkFrame(self._queue_card, fg_color="transparent")
+        actions.grid(row=3, column=0, sticky="e", padx=12, pady=(0, 10))
+        ctk.CTkButton(
+            actions,
+            text="+ Adicionar à fila",
+            width=150,
+            command=self._enqueue_current_url,
+            **SECONDARY_BTN,
+        ).pack(side="right")
+
+    def _update_queue_panel(self) -> None:
+        if not hasattr(self, "_queue_title_label"):
+            return
+        count = len(self._get_queue_snapshot())
+        suffix = f" ({count})" if count else ""
+        self._queue_title_label.configure(text=f"Fila de downloads{suffix}")
+        self._clear_queue_btn.configure(state="normal" if count else "disabled")
+        self._update_queue_active_label()
+        self._render_queue_rows()
+
+    def _update_queue_active_label(self) -> None:
+        if self._is_downloading:
+            url = self._url_entry.get().strip()
+            if url:
+                self._queue_active_label.configure(
+                    text=f"Baixando agora: {truncate_text(url, QUEUE_URL_TRUNCATE)}"
+                )
+                self._queue_active_label.grid()
+                return
+        self._queue_active_label.grid_remove()
+
+    def _render_queue_rows(self) -> None:
+        if self._queue_rows_inner is None:
+            return
+        for child in self._queue_rows_inner.winfo_children():
+            child.destroy()
+
+        urls = self._get_queue_snapshot()
+        if not urls:
+            ctk.CTkLabel(
+                self._queue_rows_inner,
+                text="Nenhum link na fila",
+                font=ctk.CTkFont(size=11),
+                text_color=TEXT_MUTED,
+                anchor="w",
+            ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=8)
+            return
+
+        for index, url in enumerate(urls):
+            row = ctk.CTkFrame(self._queue_rows_inner, fg_color="transparent")
+            row.grid(row=index, column=0, sticky="ew", pady=2)
+            row.grid_columnconfigure(1, weight=1)
+
+            ctk.CTkLabel(
+                row,
+                text=f"{index + 1}.",
+                width=22,
+                font=ctk.CTkFont(size=11),
+                text_color=TEXT_MUTED,
+                anchor="e",
+            ).grid(row=0, column=0, padx=(0, 6))
+
+            ctk.CTkLabel(
+                row,
+                text=truncate_text(url, QUEUE_URL_TRUNCATE),
+                font=ctk.CTkFont(size=11),
+                text_color=TEXT_PRIMARY,
+                anchor="w",
+            ).grid(row=0, column=1, sticky="ew")
+
+            ctk.CTkButton(
+                row,
+                text="🗑",
+                width=36,
+                height=28,
+                command=lambda i=index: self._remove_queue_item(i),
+                **SECONDARY_BTN,
+            ).grid(row=0, column=2, padx=(6, 0))
+
+    def _remove_queue_item(self, index: int) -> None:
+        self._on_remove_queue_at(index)
+        self._append_log(f"Removido da fila (posição {index + 1}).")
+
+    def _clear_queue(self) -> None:
+        if not self._get_queue_snapshot():
+            return
+        self._on_clear_queue()
+        self._append_log("Fila esvaziada.")
 
     def _schedule_preview(self) -> None:
         if self._is_downloading:
@@ -733,8 +867,6 @@ class DownloadsView(ctk.CTkFrame):
         self._on_persist_settings()
 
     def _paste_url(self) -> None:
-        if self._is_downloading:
-            return
         try:
             text = self.clipboard_get().strip()
         except tk.TclError:
@@ -745,10 +877,9 @@ class DownloadsView(ctk.CTkFrame):
             self._schedule_preview()
 
     def _clear_url(self) -> None:
-        if self._is_downloading:
-            return
         self._url_entry.delete(0, "end")
-        self._clear_preview()
+        if not self._is_downloading:
+            self._clear_preview()
 
     def _clear_log(self) -> None:
         self._log_box.configure(state="normal")
@@ -787,23 +918,15 @@ class DownloadsView(ctk.CTkFrame):
         if self._last_download_filepath and os.path.isfile(self._last_download_filepath):
             self._open_path_in_explorer(self._last_download_filepath)
 
-    def _update_queue_label(self) -> None:
-        count = self._get_queue_count()
-        if count:
-            self._queue_label.configure(text=f"Fila: {count} URL(s) aguardando")
-        else:
-            self._queue_label.configure(text="Fila vazia")
-
     def _enqueue_current_url(self) -> None:
-        if self._is_downloading:
-            return
         url = self._url_entry.get().strip()
         if not url or not is_youtube_url(url):
             self._append_log("Informe uma URL válida do YouTube para adicionar à fila.")
             return
-        self._on_enqueue_url(url)
-        self._update_queue_label()
-        self._append_log(f"Adicionado à fila: {truncate_text(url, 50)}")
+        if self._on_enqueue_url(url):
+            self._append_log(f"Adicionado à fila: {truncate_text(url, QUEUE_URL_TRUNCATE)}")
+        else:
+            self._append_log("URL já está na fila.")
 
     def _browse_folder(self) -> None:
         if self._is_downloading:
@@ -871,8 +994,10 @@ class DownloadsView(ctk.CTkFrame):
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
-        self._url_entry.configure(state=state)
-        self._clear_url_btn.configure(state=state)
+        # URL stays editable while downloading so the user can enqueue more links.
+        if enabled:
+            self._url_entry.configure(state="normal")
+            self._clear_url_btn.configure(state="normal")
         self._browse_btn.configure(state=state)
         self._clear_log_btn.configure(state=state)
         self._open_folder_btn.configure(state=state)
@@ -888,6 +1013,7 @@ class DownloadsView(ctk.CTkFrame):
             self._quality_combo.configure(state="disabled")
         self._download_btn.configure(state=state)
         self._sync_cancel_button()
+        self._update_queue_panel()
 
     def _sync_cancel_button(self) -> None:
         if self._is_downloading:
@@ -916,9 +1042,20 @@ class DownloadsView(ctk.CTkFrame):
         output_dir = self._output_dir.get().strip()
 
         if not url:
-            logger.warning("Download bloqueado: URL vazia")
-            self._append_log("Erro: informe a URL do vídeo ou playlist.")
-            return
+            url = (self._pop_next_queue_url() or "").strip()
+            if url:
+                self._url_entry.delete(0, "end")
+                self._url_entry.insert(0, url)
+                self._schedule_preview()
+                self._append_log(
+                    f"Iniciando da fila: {truncate_text(url, QUEUE_URL_TRUNCATE)}"
+                )
+            else:
+                logger.warning("Download bloqueado: URL vazia e fila vazia")
+                self._append_log(
+                    "Erro: informe a URL do vídeo ou adicione links à fila."
+                )
+                return
         if not output_dir:
             output_dir = str(DEFAULT_DOWNLOADS_DIR)
             self._output_dir.set(output_dir)

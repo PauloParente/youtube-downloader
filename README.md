@@ -105,7 +105,7 @@ python -m youtube_downloader
 - Barra de progresso, label de status e log de marcos
 - Progresso de playlist (ex.: `3/10 concluídos`)
 - Preferências em `settings.json` (pasta, qualidade, áudio, playlist e opções avançadas — formato WebM/MP4, **perfil de exportação** (H.264 compatível com Windows ou melhor qualidade), bitrate MP3, limite de banda, legendas, tema claro/escuro, `cookies.txt` e notificação ao concluir aplicados no download)
-- **Fila de downloads**: adicione várias URLs e processe em sequência
+- **Fila de downloads**: adicione várias URLs, veja a lista, remova itens ou limpe a fila; processamento sequencial automático
 - Navegação por **sidebar**: Downloads, Biblioteca, Histórico, Configurações
 - Página **Biblioteca** — lista arquivos de mídia na pasta de destino
 - Página **Histórico** com downloads recentes (abrir pasta/arquivo, baixar de novo; `history.json` local)
@@ -125,7 +125,7 @@ Veja o backlog futuro em [ROADMAP.md](ROADMAP.md).
 5. Para baixar todos os vídeos de uma playlist, marque **Baixar playlist inteira**
 6. Clique em **Baixar**
 
-Use **+ Adicionar à fila** para enfileirar vários links antes de baixar. Consulte **Histórico** para reabrir ou **baixar de novo** (↻); **Biblioteca** mostra tudo na pasta de destino.
+Use **+ Adicionar à fila** para enfileirar links (também durante um download em andamento). A lista mostra a ordem; use **Limpar fila** ou **🗑** por item. Consulte **Histórico** para reabrir ou **baixar de novo** (↻); **Biblioteca** mostra tudo na pasta de destino. A fila não é salva ao fechar o app.
 
 ## Gerar executável (.exe)
 
