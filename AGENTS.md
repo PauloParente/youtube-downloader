@@ -107,6 +107,7 @@ Nunca atualizar CustomTkinter a partir do worker.
 | Abrir pasta/arquivo, histórico (↻, 📄) | Implementado |
 | Persistência `settings.json` / `history.json` | Implementado |
 | Campos avançados + cookies + tema | Implementado em `DownloadJob` / `AppSettings` / `build_ytdl_opts` |
+| Perfil de exportação (`export_profile`) | `compatible` (H.264/AAC ou VP9/Opus em WebM) vs `max_quality`; ver `core/format_selectors.py` |
 | Idioma (`AppSettings.language`) | Só legendas no yt-dlp; UI em português (rótulo “Idioma das legendas”) |
 | Notificações ao concluir | Implementado (`core/notifications.py`) |
 | Backlog de produto | [ROADMAP.md](ROADMAP.md) — fila com lista UI, drag-and-drop, MKV, i18n, etc. |

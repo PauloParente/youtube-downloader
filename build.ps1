@@ -77,6 +77,13 @@ if (Test-Path $licenseSrc) {
 $exe = Join-Path $distDir "YouTubeDownloader.exe"
 $bundledFfmpeg = Join-Path $distFfmpeg "ffmpeg.exe"
 
+# Nao distribuir settings.json do desenvolvedor (caminhos absolutos de outra maquina)
+$settingsInDist = Join-Path $distDir "settings.json"
+if (Test-Path $settingsInDist) {
+    Remove-Item $settingsInDist -Force
+    Write-Host "Removido settings.json de dist (sera recriado no PC do usuario)"
+}
+
 if ((Test-Path $exe) -and (Test-Path $bundledFfmpeg)) {
     Write-Host ""
     Write-Host "Pronto: $exe" -ForegroundColor Green

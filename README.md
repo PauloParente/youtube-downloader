@@ -104,7 +104,7 @@ python -m youtube_downloader
 - Modo somente áudio (MP3)
 - Barra de progresso, label de status e log de marcos
 - Progresso de playlist (ex.: `3/10 concluídos`)
-- Preferências em `settings.json` (pasta, qualidade, áudio, playlist e opções avançadas — formato WebM/MP4, bitrate MP3, limite de banda, legendas, tema claro/escuro, `cookies.txt` e notificação ao concluir aplicados no download)
+- Preferências em `settings.json` (pasta, qualidade, áudio, playlist e opções avançadas — formato WebM/MP4, **perfil de exportação** (H.264 compatível com Windows ou melhor qualidade), bitrate MP3, limite de banda, legendas, tema claro/escuro, `cookies.txt` e notificação ao concluir aplicados no download)
 - **Fila de downloads**: adicione várias URLs e processe em sequência
 - Navegação por **sidebar**: Downloads, Biblioteca, Histórico, Configurações
 - Página **Biblioteca** — lista arquivos de mídia na pasta de destino
@@ -172,6 +172,7 @@ Use este software apenas para conteúdo que você tem direito de baixar. Respeit
 - **Vídeo indisponível:** o vídeo pode ser privado, restrito por região ou removido.
 - **Aviso sobre JavaScript runtime:** versões recentes do yt-dlp podem pedir Deno ou outro runtime JS para extrair todos os formatos do YouTube. Consulte a [documentação do yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/EJS) se alguns formatos estiverem ausentes.
 - **Preview com caixa cinza:** abra `logs/app.log` e procure por `Falha ao exibir thumbnail` ou `preview sem thumbnail_bytes`.
+- **Vídeo baixado não abre no Filmes e TV (AV1 / Opus):** em **Configurações** → **Perfil de exportação**, use **Compatível com Windows (H.264)** e **MP4**, salve e baixe de novo. Ou instale o [VLC](https://www.videolan.org/vlc/). O perfil **Melhor qualidade** pode gerar AV1/VP9.
 
 ## Testes
 

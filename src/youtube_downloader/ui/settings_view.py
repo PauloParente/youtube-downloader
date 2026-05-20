@@ -45,6 +45,16 @@ _AUDIO_BITRATE_FROM_LABEL = {
 }
 _AUDIO_BITRATE_TO_LABEL = {v: k for k, v in _AUDIO_BITRATE_FROM_LABEL.items()}
 
+_EXPORT_PROFILE_OPTIONS = [
+    "Compatível com Windows (H.264)",
+    "Melhor qualidade (AV1/VP9)",
+]
+_EXPORT_PROFILE_FROM_LABEL = {
+    "Compatível com Windows (H.264)": "compatible",
+    "Melhor qualidade (AV1/VP9)": "max_quality",
+}
+_EXPORT_PROFILE_TO_LABEL = {v: k for k, v in _EXPORT_PROFILE_FROM_LABEL.items()}
+
 
 class SettingsView(ctk.CTkScrollableFrame):
     def __init__(
@@ -146,18 +156,48 @@ class SettingsView(ctk.CTkScrollableFrame):
         self._field_label(quality_body, 0, "Formato de Vídeo Padrão", column=1)
         self._video_format_combo = self._combo(quality_body, _VIDEO_FORMAT_OPTIONS)
         self._video_format_combo.grid(
-            row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 12)
+            row=1, column=1, sticky="ew", padx=(8, 0), pady=(0, 4)
         )
 
-        self._field_label(quality_body, 3, "Qualidade de Áudio Padrão")
+        self._field_label(quality_body, 3, "Perfil de exportação", columnspan=2)
+        self._export_profile_combo = self._combo(quality_body, _EXPORT_PROFILE_OPTIONS)
+        self._export_profile_combo.grid(
+            row=4, column=0, columnspan=2, sticky="ew", pady=(0, 4)
+        )
+        ctk.CTkLabel(
+            quality_body,
+            text=(
+                "Compatível: abre no Filmes e TV do Windows (H.264 + AAC). "
+                "Melhor qualidade: pode exigir VLC."
+            ),
+            font=ctk.CTkFont(size=11),
+            text_color=TEXT_MUTED,
+            anchor="w",
+            wraplength=520,
+            justify="left",
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        self._webm_compat_hint = ctk.CTkLabel(
+            quality_body,
+            text="Para o reprodutor do Windows, prefira MP4 com perfil Compatível.",
+            font=ctk.CTkFont(size=11),
+            text_color=TEXT_MUTED,
+            anchor="w",
+            wraplength=520,
+            justify="left",
+        )
+        self._webm_compat_hint.grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        self._video_format_combo.configure(command=self._on_video_format_changed)
+        self._on_video_format_changed(self._video_format_combo.get())
+
+        self._field_label(quality_body, 7, "Qualidade de Áudio Padrão")
         self._audio_bitrate_combo = self._combo(quality_body, _AUDIO_BITRATE_OPTIONS)
         self._audio_bitrate_combo.grid(
-            row=4, column=0, sticky="ew", padx=(0, 8), pady=(0, 12)
+            row=8, column=0, sticky="ew", padx=(0, 8), pady=(0, 12)
         )
 
-        self._field_label(quality_body, 3, "Formato de Áudio (Apenas Áudio)", column=1)
+        self._field_label(quality_body, 7, "Formato de Áudio (Apenas Áudio)", column=1)
         self._audio_format_combo = self._combo(quality_body, ["MP3"])
-        self._audio_format_combo.grid(row=4, column=1, sticky="ew", padx=(8, 0), pady=(0, 4))
+        self._audio_format_combo.grid(row=8, column=1, sticky="ew", padx=(8, 0), pady=(0, 4))
         self._audio_format_combo.configure(state="disabled")
 
         self._audio_only_switch = ctk.CTkSwitch(
@@ -170,7 +210,7 @@ class SettingsView(ctk.CTkScrollableFrame):
             font=ctk.CTkFont(size=12),
             text_color=TEXT_PRIMARY,
         )
-        self._audio_only_switch.grid(row=5, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self._audio_only_switch.grid(row=9, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
         advanced_body = self._add_card(4, "◈", "Avançado", pad, pady_bottom=12)
         self._field_label(advanced_body, 0, "Limite de Largura de Banda (KB/s)")
@@ -363,6 +403,13 @@ class SettingsView(ctk.CTkScrollableFrame):
             button_hover_color=ACCENT_HOVER,
         ).grid(row=0, column=1, sticky="e")
 
+    def _on_video_format_changed(self, choice: str) -> None:
+        is_webm = choice == "WebM"
+        if is_webm:
+            self._webm_compat_hint.grid()
+        else:
+            self._webm_compat_hint.grid_remove()
+
     def load_settings(self, settings: AppSettings) -> None:
         self._output_dir.set(settings.output_dir)
         self._dark_theme_var.set(settings.appearance_mode == "dark")
@@ -375,6 +422,12 @@ class SettingsView(ctk.CTkScrollableFrame):
         )
         vf = "MP4 (Recomendado)" if settings.video_format == "mp4" else "WebM"
         self._video_format_combo.set(vf)
+        self._on_video_format_changed(vf)
+        self._export_profile_combo.set(
+            _EXPORT_PROFILE_TO_LABEL.get(
+                settings.export_profile, _EXPORT_PROFILE_OPTIONS[0]
+            )
+        )
         self._audio_bitrate_combo.set(
             _AUDIO_BITRATE_TO_LABEL.get(settings.audio_bitrate, _AUDIO_BITRATE_OPTIONS[1])
         )
@@ -423,6 +476,9 @@ class SettingsView(ctk.CTkScrollableFrame):
         ab = _AUDIO_BITRATE_FROM_LABEL.get(
             self._audio_bitrate_combo.get(), "192"
         )
+        export_profile = _EXPORT_PROFILE_FROM_LABEL.get(
+            self._export_profile_combo.get(), "compatible"
+        )
 
         return AppSettings(
             output_dir=self._output_dir.get().strip() or str(DEFAULT_DOWNLOADS_DIR),
@@ -431,6 +487,7 @@ class SettingsView(ctk.CTkScrollableFrame):
             download_playlist=self._playlist_var.get(),
             language=lang,
             video_format=vf,
+            export_profile=export_profile,
             audio_bitrate=ab,
             bandwidth_limit_kbps=bandwidth,
             notify_on_complete=self._notify_var.get(),

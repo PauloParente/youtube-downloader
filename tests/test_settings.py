@@ -9,6 +9,18 @@ def test_coerce_settings_defaults_on_invalid_quality() -> None:
     assert settings.quality == AppSettings.defaults().quality
 
 
+def test_resolve_output_dir_rejects_foreign_absolute_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import youtube_downloader.core.settings as settings_mod
+
+    monkeypatch.setattr(settings_mod, "PROJECT_ROOT", tmp_path)
+    foreign = r"C:\Users\outro.usuario\PythonProject\dist\YouTubeDownloader\downloads"
+    resolved = settings_mod._resolve_output_dir(foreign)
+    expected = (tmp_path / "downloads").resolve()
+    assert Path(resolved) == expected
+
+
 def test_save_and_load_roundtrip(tmp_path: Path, monkeypatch) -> None:
     import youtube_downloader.core.settings as settings_mod
 
@@ -20,6 +32,7 @@ def test_save_and_load_roundtrip(tmp_path: Path, monkeypatch) -> None:
         quality="720p",
         audio_only=True,
         download_playlist=True,
+        export_profile="max_quality",
     )
     save_settings(original)
     loaded = load_settings()

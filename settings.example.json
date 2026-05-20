@@ -5,6 +5,7 @@
   "download_playlist": false,
   "language": "pt-BR",
   "video_format": "mp4",
+  "export_profile": "compatible",
   "audio_bitrate": "192",
   "bandwidth_limit_kbps": 0,
   "notify_on_complete": true,

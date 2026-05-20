@@ -41,6 +41,7 @@ Estado do produto em relação ao código na branch `main`. Para arquitetura e c
 | **Histórico** | Abrir pasta/arquivo, **baixar de novo** (↻), **excluir** (🗑); `source_url` em `history.json` |
 | **Biblioteca** | Lista + **filtro por nome** na pasta de destino (`ui/library_view.py`, `core/library_scan.py`) |
 | **Configurações** | Tema claro/escuro (`appearance_mode`); caminho para `cookies.txt`; rótulo **Idioma das legendas** (não traduz a UI) |
+| **Perfil de exportação** | Compatível Windows (H.264) vs melhor qualidade (AV1/VP9); padrão `compatible` |
 | **About** | Botão Ver logs |
 
 ---

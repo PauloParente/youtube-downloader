@@ -9,11 +9,8 @@ from typing import Callable, Optional
 
 import yt_dlp
 
-from youtube_downloader.config import (
-    AUDIO_FORMAT,
-    AUDIO_POSTPROCESSORS,
-    QUALITY_FORMATS,
-)
+from youtube_downloader.config import AUDIO_FORMAT, AUDIO_POSTPROCESSORS
+from youtube_downloader.core.format_selectors import build_video_format_string
 from youtube_downloader.core.download_job_builder import subtitle_languages_for_ui_language
 from youtube_downloader.core.ffmpeg_utils import (
     ffmpeg_available as is_ffmpeg_available,
@@ -41,8 +38,14 @@ _KBPS_TO_BYTES_PER_SEC = 125  # 1 kbps ≈ 125 bytes/s for yt-dlp ratelimit
 
 def build_ytdl_opts(job: DownloadJob, ffmpeg_dir: str) -> dict:
     """Build yt-dlp options from a download job (testable, no network)."""
-    format_string = AUDIO_FORMAT if job.audio_only else QUALITY_FORMATS.get(
-        job.quality, QUALITY_FORMATS["Melhor disponível"]
+    format_string = (
+        AUDIO_FORMAT
+        if job.audio_only
+        else build_video_format_string(
+            job.quality,
+            job.export_profile,
+            video_format=job.video_format,
+        )
     )
 
     opts: dict = {

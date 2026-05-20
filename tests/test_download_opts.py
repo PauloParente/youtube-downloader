@@ -45,6 +45,7 @@ def test_build_download_job_merges_preferences() -> None:
     assert job.output_dir == "/dl"
     assert job.quality == "1080p"
     assert job.video_format == "webm"
+    assert job.export_profile == prefs.export_profile
     assert job.audio_bitrate == "320"
     assert job.bandwidth_limit_kbps == 500
     assert job.auto_download_subtitles is True
@@ -59,6 +60,22 @@ def test_build_ytdl_opts_video_merge_format_webm() -> None:
 def test_build_ytdl_opts_video_defaults_to_mp4_merge() -> None:
     opts = build_ytdl_opts(_job(video_format="mp4"), "/usr/bin/ffmpeg")
     assert opts["merge_output_format"] == "mp4"
+
+
+def test_build_ytdl_opts_compatible_profile_uses_h264_selector() -> None:
+    opts = build_ytdl_opts(
+        _job(export_profile="compatible", video_format="mp4"),
+        "/usr/bin/ffmpeg",
+    )
+    assert "vcodec^=avc1" in opts["format"]
+
+
+def test_build_ytdl_opts_max_quality_profile_unchanged() -> None:
+    opts = build_ytdl_opts(
+        _job(export_profile="max_quality", quality="1080p"),
+        "/usr/bin/ffmpeg",
+    )
+    assert opts["format"] == "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
 
 
 def test_build_ytdl_opts_audio_bitrate_in_postprocessor() -> None:

@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from youtube_downloader.config import DEFAULT_DOWNLOADS_DIR, PROJECT_ROOT, QUALITY_OPTIONS
+from youtube_downloader.core.format_selectors import (
+    EXPORT_PROFILE_COMPATIBLE,
+    VALID_EXPORT_PROFILES,
+)
 from youtube_downloader.core.logging_config import get_logger
 
 logger = get_logger("settings")
@@ -21,6 +25,7 @@ class AppSettings:
     download_playlist: bool
     language: str = "pt-BR"
     video_format: str = "mp4"
+    export_profile: str = EXPORT_PROFILE_COMPATIBLE
     audio_bitrate: str = "192"
     bandwidth_limit_kbps: int = 0
     notify_on_complete: bool = True
@@ -37,6 +42,7 @@ class AppSettings:
             download_playlist=False,
             language="pt-BR",
             video_format="mp4",
+            export_profile=EXPORT_PROFILE_COMPATIBLE,
             audio_bitrate="192",
             bandwidth_limit_kbps=0,
             notify_on_complete=True,
@@ -44,6 +50,34 @@ class AppSettings:
             appearance_mode="dark",
             cookies_file="",
         )
+
+
+def _resolve_output_dir(raw: str) -> str:
+    """Caminho absoluto gravável ao lado do .exe; ignora pastas de outro PC ou inacessíveis."""
+    default = PROJECT_ROOT / "downloads"
+    text = (raw or "").strip()
+    if not text:
+        candidate = default
+    else:
+        candidate = Path(text)
+        if not candidate.is_absolute():
+            candidate = PROJECT_ROOT / candidate
+
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        probe = candidate / ".write_probe"
+        probe.write_text("", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        return str(candidate.resolve())
+    except OSError as exc:
+        logger.warning(
+            "output_dir invalida ou sem permissao (%s): %s; usando %s",
+            text or raw,
+            exc,
+            default,
+        )
+        default.mkdir(parents=True, exist_ok=True)
+        return str(default.resolve())
 
 
 def _coerce_settings(data: dict[str, Any]) -> AppSettings:
@@ -70,14 +104,18 @@ def _coerce_settings(data: dict[str, Any]) -> AppSettings:
     if appearance not in ("dark", "light"):
         appearance = defaults.appearance_mode
     cookies_file = str(data.get("cookies_file", defaults.cookies_file)).strip()
+    export_profile = str(data.get("export_profile", defaults.export_profile))
+    if export_profile not in VALID_EXPORT_PROFILES:
+        export_profile = defaults.export_profile
 
     return AppSettings(
-        output_dir=str(data.get("output_dir", defaults.output_dir)),
+        output_dir=_resolve_output_dir(str(data.get("output_dir", defaults.output_dir))),
         quality=quality,
         audio_only=bool(data.get("audio_only", defaults.audio_only)),
         download_playlist=bool(data.get("download_playlist", defaults.download_playlist)),
         language=language,
         video_format=video_format,
+        export_profile=export_profile,
         audio_bitrate=audio_bitrate,
         bandwidth_limit_kbps=bandwidth,
         notify_on_complete=bool(

@@ -26,6 +26,7 @@ class DownloadJob:
     audio_only: bool
     download_playlist: bool = False
     video_format: str = "mp4"
+    export_profile: str = "compatible"
     audio_bitrate: str = "192"
     bandwidth_limit_kbps: int = 0
     auto_download_subtitles: bool = False

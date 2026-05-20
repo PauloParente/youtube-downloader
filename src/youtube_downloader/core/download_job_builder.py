@@ -27,6 +27,7 @@ def build_download_job(
         audio_only=audio_only,
         download_playlist=download_playlist,
         video_format=preferences.video_format,
+        export_profile=preferences.export_profile,
         audio_bitrate=preferences.audio_bitrate,
         bandwidth_limit_kbps=preferences.bandwidth_limit_kbps,
         auto_download_subtitles=preferences.auto_download_subtitles,
