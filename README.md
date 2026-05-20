@@ -113,6 +113,7 @@ python -m youtube_downloader
 - Página **Configurações** com cards Geral, Qualidade e Formato, Avançado
 - Atalhos: `Ctrl+V` colar URL; `Ctrl+,` ou ícone ⚙ abrir Configurações
 - Cancelamento de download em andamento
+- Janela redimensionável (tamanho mínimo ~900×680): na tela **Downloads**, o conteúdo superior rola e os botões **Baixar** / **Cancelar** permanecem fixos no rodapé
 
 Veja o backlog futuro em [ROADMAP.md](ROADMAP.md).
 
@@ -126,6 +127,13 @@ Veja o backlog futuro em [ROADMAP.md](ROADMAP.md).
 6. Clique em **Baixar**
 
 Use **+ Adicionar à fila** para enfileirar links (também durante um download em andamento). A lista mostra a ordem; use **Limpar fila** ou **🗑** por item. Consulte **Histórico** para reabrir ou **baixar de novo** (↻); **Biblioteca** mostra tudo na pasta de destino. A fila não é salva ao fechar o app.
+
+### Redimensionar a janela
+
+- Tamanho inicial 980×720; mínimo ~900×680.
+- Em **Downloads**, role o painel central se a altura for pequena; **Baixar** e **Cancelar** ficam sempre no rodapé.
+- Com pouca largura, os botões do rodapé passam para duas linhas automaticamente.
+- **Configurações**, **Histórico** e **Biblioteca** usam lista rolável que preenche a altura disponível.
 
 ## Gerar executável (.exe)
 

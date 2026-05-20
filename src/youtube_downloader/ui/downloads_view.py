@@ -18,6 +18,7 @@ from PIL import Image
 
 from youtube_downloader.config import (
     DEFAULT_DOWNLOADS_DIR,
+    DOWNLOADS_FOOTER_STACK_WIDTH,
     QUALITY_COMBO_VALUES,
     QUALITY_DISPLAY_LABELS,
     QUALITY_FROM_DISPLAY,
@@ -38,6 +39,7 @@ from youtube_downloader.core.download_job_builder import build_download_job
 from youtube_downloader.core.models import DownloadJob, EventType, ProgressEvent
 from youtube_downloader.core.settings import AppSettings
 from youtube_downloader.core.text_utils import truncate_text
+from youtube_downloader.ui.layout_utils import apply_wraplength_from_widget
 from youtube_downloader.ui.theme import (
     ACCENT,
     ACCENT_HOVER,
@@ -112,6 +114,11 @@ class DownloadsView(ctk.CTkFrame):
         self._last_download_filepath: Optional[str] = None
         self._log_body: Optional[ctk.CTkFrame] = None
         self._log_expanded = True
+        self._scroll_host: Optional[ctk.CTkFrame] = None
+        self._scroll: Optional[ctk.CTkScrollableFrame] = None
+        self._footer: Optional[ctk.CTkFrame] = None
+        self._btn_row: Optional[ctk.CTkFrame] = None
+        self._footer_layout_narrow = False
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -193,26 +200,40 @@ class DownloadsView(ctk.CTkFrame):
 
     def _show_preview_panel(self, visible: bool) -> None:
         if visible:
-            self._preview_frame.grid(row=0, column=0, padx=(0, 8), sticky="nsew")
+            self._preview_frame.grid(row=0, column=0, padx=(0, 8), sticky="new")
             self._preview_placeholder.grid_remove()
         else:
             self._preview_frame.grid_remove()
-            self._preview_placeholder.grid(row=0, column=0, padx=(0, 8), sticky="nsew")
+            self._preview_placeholder.grid(row=0, column=0, padx=(0, 8), sticky="new")
 
     def _build_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(4, weight=1)
+        self.grid_rowconfigure(0, weight=1)
         cp = 20
 
+        # Host does not grow with scroll content — keeps viewport above the fixed footer.
+        self._scroll_host = ctk.CTkFrame(self, fg_color="transparent")
+        self._scroll_host.grid(row=0, column=0, sticky="nsew")
+        self._scroll_host.grid_propagate(False)
+        self._scroll_host.grid_rowconfigure(0, weight=1)
+        self._scroll_host.grid_columnconfigure(0, weight=1)
+
+        self._scroll = ctk.CTkScrollableFrame(self._scroll_host, fg_color="transparent")
+        self._scroll.grid(row=0, column=0, sticky="nsew")
+        self._scroll.grid_columnconfigure(0, weight=1)
+        self.bind("<Configure>", self._on_view_configure)
+
+        scroll = self._scroll
+
         ctk.CTkLabel(
-            self,
+            scroll,
             text="URL do YouTube",
             anchor="w",
             font=ctk.CTkFont(size=12),
             text_color=TEXT_SECONDARY,
         ).grid(row=0, column=0, padx=cp, pady=(4, 6), sticky="ew")
 
-        url_outer = ctk.CTkFrame(self, fg_color="transparent")
+        url_outer = ctk.CTkFrame(scroll, fg_color="transparent")
         url_outer.grid(row=1, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
         url_outer.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(
@@ -235,16 +256,15 @@ class DownloadsView(ctk.CTkFrame):
         )
         self._clear_url_btn.grid(row=0, column=2)
 
-        self._build_queue_section(cp)
+        self._build_queue_section(scroll, cp)
 
-        mid = ctk.CTkFrame(self, fg_color="transparent")
-        mid.grid(row=3, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="nsew")
+        mid = ctk.CTkFrame(scroll, fg_color="transparent")
+        mid.grid(row=3, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
         mid.grid_columnconfigure(0, weight=3)
         mid.grid_columnconfigure(1, weight=2)
-        mid.grid_rowconfigure(0, weight=1)
 
         self._preview_placeholder = ctk.CTkFrame(mid, **CARD_STYLE)
-        self._preview_placeholder.grid(row=0, column=0, padx=(0, 8), sticky="nsew")
+        self._preview_placeholder.grid(row=0, column=0, padx=(0, 8), sticky="new")
         ctk.CTkLabel(
             self._preview_placeholder,
             text="O preview do vídeo aparecerá aqui",
@@ -255,6 +275,7 @@ class DownloadsView(ctk.CTkFrame):
         self._preview_frame = ctk.CTkFrame(mid, **CARD_STYLE)
         self._preview_frame.grid_remove()
         self._preview_frame.grid_columnconfigure(0, weight=1)
+        self._mid = mid
 
         thumb_wrap = ctk.CTkFrame(self._preview_frame, fg_color="transparent")
         thumb_wrap.pack(fill="x", padx=12, pady=(12, 8))
@@ -286,7 +307,6 @@ class DownloadsView(ctk.CTkFrame):
             text="",
             anchor="w",
             justify="left",
-            wraplength=320,
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=TEXT_PRIMARY,
         )
@@ -301,7 +321,7 @@ class DownloadsView(ctk.CTkFrame):
         self._preview_subtitle_label.pack(fill="x", padx=12, pady=(0, 12))
 
         opts_card = ctk.CTkFrame(mid, **CARD_STYLE)
-        opts_card.grid(row=0, column=1, sticky="nsew")
+        opts_card.grid(row=0, column=1, sticky="new")
         opts_card.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
             opts_card,
@@ -356,14 +376,13 @@ class DownloadsView(ctk.CTkFrame):
         self._set_quality_combo(QUALITY_OPTIONS[0])
         self._quality_combo.grid(row=4, column=0, padx=14, pady=(0, 14), sticky="ew")
 
-        bottom = ctk.CTkFrame(self, fg_color="transparent")
-        bottom.grid(row=4, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="nsew")
+        bottom = ctk.CTkFrame(scroll, fg_color="transparent")
+        bottom.grid(row=4, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
         bottom.grid_columnconfigure(0, weight=1)
         bottom.grid_columnconfigure(1, weight=1)
-        bottom.grid_rowconfigure(0, weight=1)
 
         dest_block = ctk.CTkFrame(bottom, fg_color="transparent")
-        dest_block.grid(row=0, column=0, padx=(0, 8), sticky="nsew")
+        dest_block.grid(row=0, column=0, padx=(0, 8), sticky="ew")
         dest_block.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
             dest_block,
@@ -373,7 +392,7 @@ class DownloadsView(ctk.CTkFrame):
             anchor="w",
         ).grid(row=0, column=0, sticky="w", pady=(0, 6))
         dest_card = ctk.CTkFrame(dest_block, **CARD_STYLE)
-        dest_card.grid(row=1, column=0, sticky="nsew")
+        dest_card.grid(row=1, column=0, sticky="ew")
         dest_card.grid_columnconfigure(0, weight=1)
         path_row = ctk.CTkFrame(dest_card, fg_color="transparent")
         path_row.grid(row=0, column=0, sticky="ew", padx=12, pady=12)
@@ -388,9 +407,8 @@ class DownloadsView(ctk.CTkFrame):
         self._browse_btn.grid(row=0, column=1)
 
         log_block = ctk.CTkFrame(bottom, fg_color="transparent")
-        log_block.grid(row=0, column=1, sticky="nsew")
+        log_block.grid(row=0, column=1, sticky="ew")
         log_block.grid_columnconfigure(0, weight=1)
-        log_block.grid_rowconfigure(1, weight=1)
         log_header = ctk.CTkFrame(log_block, fg_color="transparent")
         log_header.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         log_header.grid_columnconfigure(1, weight=1)
@@ -410,13 +428,11 @@ class DownloadsView(ctk.CTkFrame):
         )
         self._clear_log_btn.grid(row=0, column=2, sticky="e")
         log_card = ctk.CTkFrame(log_block, **CARD_STYLE)
-        log_card.grid(row=1, column=0, sticky="nsew")
+        log_card.grid(row=1, column=0, sticky="ew")
         log_card.grid_columnconfigure(0, weight=1)
-        log_card.grid_rowconfigure(0, weight=1)
         self._log_body = ctk.CTkFrame(log_card, fg_color="transparent")
-        self._log_body.grid(row=0, column=0, sticky="nsew")
+        self._log_body.grid(row=0, column=0, sticky="ew")
         self._log_body.grid_columnconfigure(0, weight=1)
-        self._log_body.grid_rowconfigure(0, weight=1)
         self._log_box = ctk.CTkTextbox(
             self._log_body,
             state="disabled",
@@ -428,10 +444,11 @@ class DownloadsView(ctk.CTkFrame):
             text_color=TEXT_SECONDARY,
             font=ctk.CTkFont(family=FONT_BODY[0], size=11),
         )
-        self._log_box.grid(row=0, column=0, padx=12, pady=12, sticky="nsew")
+        self._log_box.grid(row=0, column=0, padx=12, pady=12, sticky="ew")
 
-        footer = ctk.CTkFrame(self, fg_color="transparent")
-        footer.grid(row=5, column=0, padx=cp, pady=(0, 16), sticky="ew")
+        self._footer = ctk.CTkFrame(self, fg_color="transparent")
+        self._footer.grid(row=1, column=0, padx=cp, pady=(8, 16), sticky="ew")
+        footer = self._footer
         footer.grid_columnconfigure(0, weight=1)
         status_row = ctk.CTkFrame(footer, fg_color="transparent")
         status_row.grid(row=0, column=0, sticky="ew", pady=(0, 6))
@@ -461,9 +478,11 @@ class DownloadsView(ctk.CTkFrame):
             footer, text="", anchor="w", text_color=TEXT_MUTED, font=ctk.CTkFont(size=11)
         )
         self._playlist_progress_label.grid(row=2, column=0, sticky="ew", pady=(0, 8))
-        btn_row = ctk.CTkFrame(footer, fg_color="transparent")
-        btn_row.grid(row=3, column=0, sticky="ew")
-        btn_row.grid_columnconfigure(3, weight=1)
+        self._btn_row = ctk.CTkFrame(footer, fg_color="transparent")
+        self._btn_row.grid(row=3, column=0, sticky="ew")
+        self._btn_row.grid_columnconfigure(3, weight=1)
+        self._btn_row.bind("<Configure>", self._on_footer_resize)
+        btn_row = self._btn_row
         self._open_folder_btn = ctk.CTkButton(
             btn_row,
             text="📁  Abrir pasta",
@@ -511,9 +530,87 @@ class DownloadsView(ctk.CTkFrame):
         self._download_btn.grid(row=0, column=4, sticky="e")
         self._sync_cancel_button()
         self._update_queue_panel()
+        self.after_idle(self._on_view_configure)
+        self.after_idle(lambda: self._apply_footer_button_layout(False))
 
-    def _build_queue_section(self, pad: int) -> None:
-        self._queue_card = ctk.CTkFrame(self, **CARD_STYLE)
+    def _on_view_configure(self, _event: Optional[object] = None) -> None:
+        self._sync_scroll_viewport()
+        self._on_scroll_wraplength()
+
+    def _sync_scroll_viewport(self) -> None:
+        """Keep the scroll area height within the space above the fixed footer."""
+        if self._scroll_host is None or self._footer is None:
+            return
+        try:
+            self.update_idletasks()
+            total_h = self.winfo_height()
+            footer_h = self._footer.winfo_reqheight()
+        except tk.TclError:
+            return
+        total_w = self.winfo_width()
+        if total_h <= 1 or total_w <= 1:
+            return
+        scroll_h = max(160, total_h - footer_h - 4)
+        if (
+            self._scroll_host.winfo_height() != scroll_h
+            or self._scroll_host.winfo_width() != total_w
+        ):
+            self._scroll_host.configure(height=scroll_h, width=total_w)
+
+    def _on_scroll_wraplength(self) -> None:
+        if self._scroll is None:
+            return
+        apply_wraplength_from_widget(
+            self._queue_active_label, self._scroll, pad=48, max_px=640
+        )
+        if hasattr(self, "_mid"):
+            apply_wraplength_from_widget(
+                self._preview_title_label, self._mid, pad=48, max_px=520
+            )
+
+    def _on_footer_resize(self, event: Optional[object] = None) -> None:
+        if self._btn_row is None:
+            return
+        if event is not None and getattr(event, "widget", None) != self._btn_row:
+            return
+        try:
+            width = self._btn_row.winfo_width()
+        except tk.TclError:
+            return
+        if width <= 1:
+            return
+        narrow = width < DOWNLOADS_FOOTER_STACK_WIDTH
+        if narrow == self._footer_layout_narrow:
+            return
+        self._footer_layout_narrow = narrow
+        self._apply_footer_button_layout(narrow)
+
+    def _apply_footer_button_layout(self, narrow: bool) -> None:
+        if self._btn_row is None:
+            return
+        for btn in (
+            self._open_folder_btn,
+            self._open_file_btn,
+            self._cancel_btn,
+            self._download_btn,
+        ):
+            btn.grid_forget()
+        if narrow:
+            self._btn_row.grid_columnconfigure(3, weight=0)
+            self._open_folder_btn.grid(row=0, column=0, padx=(0, 8), sticky="w")
+            self._open_file_btn.grid(row=0, column=1, padx=(0, 8), sticky="w")
+            self._cancel_btn.grid(row=0, column=2, padx=(0, 8), sticky="w")
+            self._download_btn.grid(row=1, column=0, columnspan=3, sticky="e", pady=(8, 0))
+        else:
+            self._btn_row.grid_columnconfigure(3, weight=1)
+            self._open_folder_btn.grid(row=0, column=0, padx=(0, 8))
+            self._open_file_btn.grid(row=0, column=1, padx=(0, 8))
+            self._cancel_btn.grid(row=0, column=2, padx=(0, 8))
+            self._download_btn.grid(row=0, column=4, sticky="e")
+        self.after_idle(self._sync_scroll_viewport)
+
+    def _build_queue_section(self, parent: ctk.CTkBaseClass, pad: int) -> None:
+        self._queue_card = ctk.CTkFrame(parent, **CARD_STYLE)
         self._queue_card.grid(row=2, column=0, padx=pad, pady=(0, SECTION_GAP), sticky="ew")
         self._queue_card.grid_columnconfigure(0, weight=1)
 
@@ -546,7 +643,6 @@ class DownloadsView(ctk.CTkFrame):
             anchor="w",
             font=ctk.CTkFont(size=11),
             text_color=TEXT_MUTED,
-            wraplength=640,
             justify="left",
         )
         self._queue_active_label.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 4))

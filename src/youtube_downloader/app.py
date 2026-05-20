@@ -15,6 +15,8 @@ from youtube_downloader.config import (
     APP_TITLE,
     APP_VERSION,
     DEFAULT_DOWNLOADS_DIR,
+    WINDOW_MIN_HEIGHT,
+    WINDOW_MIN_WIDTH,
     WINDOW_SIZE,
 )
 from youtube_downloader.ui.nav_sidebar import NavSidebar
@@ -68,7 +70,7 @@ class YoutubeDownloaderApp(ctk.CTk):
 
         self.title(APP_TITLE)
         self.geometry(WINDOW_SIZE)
-        self.minsize(820, 600)
+        self.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.configure(fg_color=APP_BG)
 
         self._view_frames: dict[str, ctk.CTkFrame] = {}

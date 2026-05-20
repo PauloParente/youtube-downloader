@@ -124,7 +124,6 @@ class HistoryView(ctk.CTkFrame):
         self._rows_scroll = ctk.CTkScrollableFrame(
             self._table_card,
             fg_color="transparent",
-            height=360,
         )
         self._rows_scroll.grid(row=1, column=0, sticky="nsew", padx=8, pady=(4, 12))
         self._rows_scroll.grid_columnconfigure(1, weight=1)
