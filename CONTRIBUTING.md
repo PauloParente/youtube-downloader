@@ -13,7 +13,7 @@ Obrigado por ajudar no YouTube Downloader.
 - Trabalhe em um branch à parte; abra PR para `main`.
 - Descreva o que mudou e por quê.
 - Se alterar a interface, atualize o README quando fizer sentido.
-- O CI (GitHub Actions) deve passar no Windows.
+- O CI (GitHub Actions) deve passar nos jobs **Windows** e **Ubuntu** (`pytest` + smoke `import tkinter` no Linux).
 
 ## Commits
 

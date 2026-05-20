@@ -15,27 +15,52 @@ Aplicativo desktop em Python para baixar vídeos e playlists do YouTube, com int
 ### Para desenvolvimento (rodar com Python)
 
 - Python 3.10 ou superior
-- FFmpeg no PATH, em `%LOCALAPPDATA%\ffmpeg`, ou rode `.\build.ps1` uma vez para popular `vendor\ffmpeg\bin`
+- **Tkinter** (interface gráfica): vem com o instalador oficial no Windows; no Linux instale o pacote do sistema (veja abaixo)
+- **FFmpeg** no PATH (obrigatório para vídeo/MP3 com merge)
+  - **Windows:** PATH, `%LOCALAPPDATA%\ffmpeg`, ou `.\build.ps1` uma vez → `vendor\ffmpeg\bin`
+  - **Linux:** ex. `sudo dnf install ffmpeg` (Fedora), `sudo apt install ffmpeg` (Debian/Ubuntu)
 
 ## Começar do zero (clone)
 
-```powershell
+```bash
 git clone https://github.com/PauloParente/youtube-downloader.git
 cd youtube-downloader
+```
+
+Instale dependências de sistema no **Linux** antes do venv (Tk + FFmpeg):
+
+| Distro | Tkinter | FFmpeg |
+|--------|---------|--------|
+| Fedora / Bazzite (rpm-ostree) | `rpm-ostree install python3-tkinter` (reboot) | `rpm-ostree install ffmpeg` ou equivalente |
+| Debian / Ubuntu | `sudo apt install python3-tk python3-venv` | `sudo apt install ffmpeg` |
+
+No **Windows**, Tkinter já costuma vir com o Python; FFmpeg: PATH ou `build.ps1` (abaixo).
+
+### Windows (PowerShell)
+
+```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements-lock.txt -r requirements-dev.txt
 python main.py
 python -m pytest
 ```
 
-**FFmpeg em desenvolvimento:** instale no PATH, coloque em `%LOCALAPPDATA%\ffmpeg`, ou execute `.\build.ps1` uma vez (baixa para `vendor\ffmpeg` sem gerar o `.exe`).
+### Linux (bash)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-lock.txt -r requirements-dev.txt
+python main.py
+python -m pytest
+```
 
 **Configurações opcionais:** copie `settings.example.json` para `settings.json` na raiz do projeto se quiser valores iniciais. O app cria e atualiza `settings.json` automaticamente ao salvar na tela Configurações.
 
-**Atualizar yt-dlp após o clone:** `.\update-deps.ps1`
+**Atualizar yt-dlp (Windows):** `.\update-deps.ps1` — no Linux: `pip install -U yt-dlp` com o venv ativado.
 
-Para versões fixas (como no CI), use `pip install -r requirements-lock.txt` em vez de `requirements.txt`.
+**Versões fixas:** `requirements-lock.txt` é o mesmo arquivo usado no CI (Windows e Ubuntu).
 
 ## Instalação (já com o código local)
 
@@ -140,8 +165,9 @@ Use este software apenas para conteúdo que você tem direito de baixar. Respeit
 
 ## Solução de problemas
 
+- **`ModuleNotFoundError: No module named '_tkinter'` (Linux):** instale o pacote Tk do sistema (`python3-tk` / `python3-tkinter`) e use o mesmo `python3` para criar o venv. Em Fedora Atomic pode ser necessário `rpm-ostree install python3-tkinter` e reiniciar.
 - **FFmpeg não encontrado (versão .exe):** regenere com `.\build.ps1` e confira se existe `dist\YouTubeDownloader\ffmpeg\ffmpeg.exe` ao lado do executável.
-- **FFmpeg não encontrado (desenvolvimento):** instale no PATH ou rode `.\build.ps1` uma vez para popular `vendor\ffmpeg\bin`.
+- **FFmpeg não encontrado (desenvolvimento):** instale no PATH; no Windows pode usar `.\build.ps1` para popular `vendor\ffmpeg\bin`; no Linux use o gerenciador de pacotes da distro.
 - **Download falha sem motivo claro:** atualize dependências com `.\update-deps.ps1` ou `pip install -U yt-dlp`
 - **Vídeo indisponível:** o vídeo pode ser privado, restrito por região ou removido.
 - **Aviso sobre JavaScript runtime:** versões recentes do yt-dlp podem pedir Deno ou outro runtime JS para extrair todos os formatos do YouTube. Consulte a [documentação do yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/EJS) se alguns formatos estiverem ausentes.
@@ -149,10 +175,13 @@ Use este software apenas para conteúdo que você tem direito de baixar. Respeit
 
 ## Testes
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m pytest
+Com o venv ativado:
+
+```bash
+python -m pytest
 ```
+
+No Windows, se preferir caminho explícito: `.\.venv\Scripts\python.exe -m pytest`
 
 ## Atualizar dependências
 

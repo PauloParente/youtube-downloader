@@ -21,10 +21,10 @@ Estado do produto em relação ao código na branch `main`. Para arquitetura e c
 - Ícones de atalho no topo (configurações, ajuda)
 
 ### Fase 3 — Manutenção
-- Testes pytest em `tests/` (23 testes, foco em `core/`)
+- Testes pytest em `tests/` (25 testes, foco em `core/`)
 - Script `update-deps.ps1`
 - Checklist de release no README
-- Repositório no GitHub: CI (Windows), CONTRIBUTING, `settings.example.json`
+- Repositório no GitHub: CI (Windows + Ubuntu), CONTRIBUTING, `settings.example.json`
 
 ### Fase 4 — Arquitetura e opções de download
 - **`DownloadsView`** extraída de `app.py` (`ui/downloads_view.py`); `app.py` como shell (fila de eventos, worker, navegação)
@@ -38,8 +38,8 @@ Estado do produto em relação ao código na branch `main`. Para arquitetura e c
 |------|-------------------|
 | **Downloads** | Botões Abrir pasta / Abrir arquivo; status pós-download; marcar playlist no preview se a opção padrão estiver ativa |
 | **Fila** | `+ Adicionar à fila` + processamento **sequencial** automático (`core/download_queue.py`) |
-| **Histórico** | Abrir pasta, abrir arquivo, **baixar de novo** (↻); `source_url` em `history.json` |
-| **Biblioteca** | Lista arquivos de mídia na pasta de destino (`ui/library_view.py`, `core/library_scan.py`) |
+| **Histórico** | Abrir pasta/arquivo, **baixar de novo** (↻), **excluir** (🗑); `source_url` em `history.json` |
+| **Biblioteca** | Lista + **filtro por nome** na pasta de destino (`ui/library_view.py`, `core/library_scan.py`) |
 | **Configurações** | Tema claro/escuro (`appearance_mode`); caminho para `cookies.txt`; rótulo **Idioma das legendas** (não traduz a UI) |
 | **About** | Botão Ver logs |
 
@@ -52,14 +52,13 @@ Itens **não** implementados ou só parcialmente.
 | Item | Situação atual | Próximo passo sugerido |
 |------|----------------|------------------------|
 | **Fila de downloads (UI)** | Contador + enfileirar URL; sem lista editável | Mostrar URLs na fila, remover item, limpar fila |
-| **Biblioteca** | MVP: listagem por pasta, botão Abrir | Filtro/busca, abrir pasta, miniaturas ou metadados opcionais |
-| **Histórico** | Sem excluir entrada | Botão remover + persistir `history.json` |
+| **Biblioteca** | Lista + filtro por nome; botão Abrir arquivo | Abrir pasta de destino, miniaturas ou metadados opcionais |
 | **Arrastar URL** | Não feito | Drag-and-drop (ex. `tkinterdnd2`); validar Windows e Linux |
 | **MKV** | Reconhecido no scan; não é opção de merge | Estender `video_format` + testes FFmpeg |
 | **Idioma da interface (i18n)** | `language` só afeta legendas no yt-dlp | i18n completo ou manter só “idioma das legendas” |
 | **Runtime JS (Deno)** | Documentado no README | Aviso na UI quando yt-dlp precisar de challenge solver |
-| **CI Linux** | CI só em `windows-latest` | Job `ubuntu-latest`: `pytest` + smoke import Tk |
 | **Duplicação Downloads ↔ Config** | Pasta/qualidade/áudio em duas telas | Unificar UX (defaults só em Configurações, por exemplo) |
+| **Onboarding Linux no README** | Seção Linux + Tk/FFmpeg documentados | Manter alinhado ao testar novas distros |
 
 ### Engenharia (baixa urgência)
 - Mais testes: merge settings + job, `force_release_download_ui` (mocks)
@@ -70,13 +69,11 @@ Itens **não** implementados ou só parcialmente.
 
 ## Ordem sugerida para o backlog
 
-1. Atualizar documentação quando mudar comportamento (este arquivo + AGENTS.md)
-2. Fila com **lista visível** e remoção de itens
-3. Histórico: **excluir** item
-4. Biblioteca: **busca/filtro**
-5. **CI em Linux** (ambiente principal de desenvolvimento)
-6. Drag-and-drop de URL
-7. MKV e demais formatos, se houver demanda
+1. Fila com **lista visível** e remoção de itens
+2. Biblioteca: **abrir pasta** de destino e polish da listagem
+3. Drag-and-drop de URL
+4. MKV e demais formatos, se houver demanda
+5. Aviso na UI para runtime JS (Deno), se yt-dlp exigir
 
 ---
 

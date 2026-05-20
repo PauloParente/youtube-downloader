@@ -109,7 +109,7 @@ Nunca atualizar CustomTkinter a partir do worker.
 | Campos avançados + cookies + tema | Implementado em `DownloadJob` / `AppSettings` / `build_ytdl_opts` |
 | Idioma (`AppSettings.language`) | Só legendas no yt-dlp; UI em português (rótulo “Idioma das legendas”) |
 | Notificações ao concluir | Implementado (`core/notifications.py`) |
-| Backlog de produto | [ROADMAP.md](ROADMAP.md) — drag-and-drop, MKV, i18n, CI Linux, etc. |
+| Backlog de produto | [ROADMAP.md](ROADMAP.md) — fila com lista UI, drag-and-drop, MKV, i18n, etc. |
 
 **Regra:** opções avançadas só valem no download após **Salvar** em Configurações (ou já persistidas em `settings.json`). Campos da tela Downloads (pasta, qualidade, áudio, playlist) são gravados ao baixar.
 
