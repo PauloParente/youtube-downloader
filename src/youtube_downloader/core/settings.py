@@ -1,6 +1,8 @@
 """Persist user preferences beside the executable / project root."""
 
 import json
+import os
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -52,12 +54,27 @@ class AppSettings:
         )
 
 
+_WINDOWS_ABS_RE = re.compile(r"^[A-Za-z]:[/\\]")
+
+
+def _looks_like_windows_absolute(text: str) -> bool:
+    return bool(_WINDOWS_ABS_RE.match(text.strip()))
+
+
 def _resolve_output_dir(raw: str) -> str:
     """Caminho absoluto gravável ao lado do .exe; ignora pastas de outro PC ou inacessíveis."""
     default = PROJECT_ROOT / "downloads"
     text = (raw or "").strip()
     if not text:
         candidate = default
+    elif os.name != "nt" and _looks_like_windows_absolute(text):
+        logger.warning(
+            "output_dir estilo Windows em %s; usando %s",
+            text,
+            default,
+        )
+        default.mkdir(parents=True, exist_ok=True)
+        return str(default.resolve())
     else:
         candidate = Path(text)
         if not candidate.is_absolute():
