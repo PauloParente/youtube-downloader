@@ -35,6 +35,7 @@ from youtube_downloader.core.download_history import (
     DownloadHistoryEntry,
     add_history_entry,
     load_history,
+    remove_history_entry,
 )
 from youtube_downloader.core.download_queue import DownloadQueue
 from youtube_downloader.core.downloader import YoutubeDownloader
@@ -176,6 +177,11 @@ class YoutubeDownloaderApp(ctk.CTk):
         if self._downloads_view is not None:
             self._downloads_view.set_url_and_focus(cleaned)
 
+    def _remove_history_entry(self, filepath: str) -> None:
+        self._history_entries = remove_history_entry(filepath)
+        if self._history_view is not None:
+            self._history_view.set_entries(self._history_entries)
+
     def _enqueue_download_url(self, url: str) -> None:
         self._download_queue.add(url)
 
@@ -243,6 +249,7 @@ class YoutubeDownloaderApp(ctk.CTk):
             on_open_folder=self._open_history_folder,
             on_open_file=self._open_history_file,
             on_redownload=self._redownload_from_history,
+            on_remove=self._remove_history_entry,
         )
         self._view_frames["history"] = self._history_view
         self._history_view.set_entries(self._history_entries)

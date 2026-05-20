@@ -146,3 +146,13 @@ def add_history_entry(entry: DownloadHistoryEntry) -> list[DownloadHistoryEntry]
     entries = entries[:_MAX_ENTRIES]
     save_history(entries)
     return entries
+
+
+def remove_history_entry(filepath: str) -> list[DownloadHistoryEntry]:
+    """Remove one entry by filepath and persist. Returns the updated list."""
+    cleaned = filepath.strip()
+    if not cleaned:
+        return load_history()
+    entries = [e for e in load_history() if e.filepath != cleaned]
+    save_history(entries)
+    return entries

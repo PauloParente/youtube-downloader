@@ -29,12 +29,14 @@ class HistoryView(ctk.CTkFrame):
         on_open_folder: Callable[[str], None],
         on_open_file: Callable[[str], None],
         on_redownload: Callable[[str, str], None],
+        on_remove: Callable[[str], list[DownloadHistoryEntry]],
         **kwargs,
     ) -> None:
         super().__init__(master, fg_color="transparent", **kwargs)
         self._on_open_folder = on_open_folder
         self._on_open_file = on_open_file
         self._on_redownload = on_redownload
+        self._on_remove = on_remove
         self._entries: list[DownloadHistoryEntry] = []
         self._filter_var = ctk.StringVar()
         self._filter_var.trace_add("write", lambda *_: self._render_rows())
@@ -256,4 +258,15 @@ class HistoryView(ctk.CTkFrame):
             state=redo_state,
             command=lambda u=entry.source_url, t=entry.title: self._on_redownload(u, t),
             **SECONDARY_BTN,
+        ).pack(side="left", padx=(0, 4))
+        ctk.CTkButton(
+            actions,
+            text="🗑",
+            width=32,
+            height=32,
+            command=lambda p=path: self._remove_entry(p),
+            **SECONDARY_BTN,
         ).pack(side="left")
+
+    def _remove_entry(self, filepath: str) -> None:
+        self.set_entries(self._on_remove(filepath))
