@@ -30,22 +30,25 @@ python -m pytest                  # testes
 main.py                           # launcher (insere src/ no path)
 src/youtube_downloader/
   config.py                       # constantes, QUALITY_FORMATS, APP_VERSION, PROJECT_ROOT
-  app.py                          # shell da janela (~1250 linhas): navegação, Downloads, eventos
+  app.py                          # shell da janela (~500 linhas): nav, fila, worker, About
   core/                           # sem dependência de Tk
-    downloader.py                 # YoutubeDownloader + yt-dlp
+    downloader.py                 # YoutubeDownloader, build_ytdl_opts, yt-dlp
+    download_job_builder.py       # DownloadJob a partir de AppSettings + UI
     metadata.py                   # preview (fetch_preview, VideoPreview)
     settings.py                   # AppSettings, load/save settings.json
     download_history.py           # history.json
     models.py                     # DownloadJob, ProgressEvent, EventType
+    notifications.py              # notificação desktop ao concluir download
     ffmpeg_utils.py               # localizar FFmpeg
     logging_config.py             # logs em logs/
     text_utils.py                 # truncate, strip_ansi
   ui/
     theme.py                      # cores e estilos de botões
     nav_sidebar.py                # sidebar Downloads / Biblioteca / Histórico / Configurações
+    downloads_view.py             # tela Downloads (URL, preview, progresso, log)
     settings_view.py              # página Configurações
     history_view.py               # página Histórico
-tests/                            # pytest
+tests/                            # pytest (incl. test_download_opts.py)
 ```
 
 Dados locais na **raiz do projeto** (dev) ou ao lado do `.exe` (dist): `settings.json`, `history.json`, `downloads/`, `logs/`. Não versionar (ver `.gitignore`).
@@ -58,10 +61,12 @@ flowchart TB
   app --> nav[NavSidebar]
   app --> settings[SettingsView]
   app --> history[HistoryView]
-  app --> downloadUI[Tela Downloads em app.py]
+  app --> downloads[DownloadsView]
   app --> queue[queue.Queue]
-  downloadUI --> dl[YoutubeDownloader]
-  downloadUI --> meta[fetch_preview]
+  app --> dl[YoutubeDownloader]
+  downloads --> meta[fetch_preview]
+  downloads -->|"on_start_download"| app
+  queue -->|"handle_progress_event"| downloads
   dl --> ytdlp[yt-dlp]
   dl --> ffmpeg[ffmpeg_utils]
   settings --> settFile[settings.json]
@@ -70,24 +75,25 @@ flowchart TB
 
 ### Responsabilidades
 
-- **`app.py`**: janela principal, `_build_download_view`, preview com debounce, `_start_download` / `_cancel_download`, `_poll_queue` → `_handle_event`, persistência de settings ao baixar, placeholders (Biblioteca).
-- **`core/`**: toda lógica testável sem UI; callbacks `on_event(ProgressEvent)` no download.
-- **`ui/`**: componentes visuais; views recebem callbacks (`on_save`, `on_open_path`, `on_select`).
+- **`app.py`**: janela principal, top bar, navegação, `_poll_queue` → `_handle_event` (delega à `DownloadsView`), `_run_download_job` (thread + `YoutubeDownloader`), histórico/settings wiring, About, notificação ao `DONE`.
+- **`ui/downloads_view.py`**: URL, preview (debounce + worker), opções locais, pasta, log, barra de progresso, `build_download_job` + callbacks; `force_release_download_ui` se o evento terminal falhar.
+- **`core/`**: lógica testável sem Tk; `build_ytdl_opts(job)` mapeia `DownloadJob` → opções yt-dlp.
+- **`ui/`** (demais views): componentes visuais; callbacks no `__init__` (`on_save`, `on_open_path`, `on_select`).
 
 ## Fluxo de download (threading)
 
 Tk **não** é thread-safe. Padrão obrigatório:
 
-1. Main thread: usuário clica Baixar → `_start_download` monta `DownloadJob` → inicia `threading.Thread` worker.
+1. Main thread: usuário clica Baixar → `DownloadsView` monta `DownloadJob` (`build_download_job` + `AppSettings`) → `on_start_download` → `app._run_download_job` inicia worker.
 2. Worker: `YoutubeDownloader.download(job, on_event)` chama `on_event(ProgressEvent)` → `queue.put`.
-3. Main thread: `after(50, _poll_queue)` drena a fila → `_handle_event` atualiza widgets.
+3. Main thread: `after(50, _poll_queue)` drena a fila → `app._handle_event` → `DownloadsView.handle_progress_event`; ao terminar o worker, `force_release_download_ui` se a UI ainda estiver travada.
 
 Nunca atualizar CustomTkinter a partir do worker.
 
 ## Fluxo de preview
 
 1. URL alterada → debounce (`PREVIEW_DEBOUNCE_MS`) → thread busca `fetch_preview`.
-2. Eventos `PREVIEW_LOADING` / `PREVIEW_READY` / `PREVIEW_CLEAR` na mesma fila ou lógica equivalente em `app.py`.
+2. Eventos `PREVIEW_LOADING` / `PREVIEW_READY` / `PREVIEW_CLEAR` na fila do shell; UI em `downloads_view.py`.
 3. Thumbnails em `logs/cache/`; limpeza via `clear_preview_cache`.
 
 ## Implementado vs. pendente
@@ -99,12 +105,12 @@ Nunca atualizar CustomTkinter a partir do worker.
 | Sidebar, Configurações, Histórico | Implementado |
 | Biblioteca | Placeholder apenas (`_build_placeholder_view`) |
 | Persistência `settings.json` / `history.json` | Implementado |
-| Campos avançados em `AppSettings` (idioma, formato vídeo, bitrate, banda, notificações, legendas) | Salvos na UI e JSON |
-| Esses campos no yt-dlp / `DownloadJob` | **Não ligados** — `DownloadJob` só: `url`, `output_dir`, `quality`, `audio_only`, `download_playlist` (ver `app.py` ~`_start_download`) |
-| Notificações ao concluir | UI + settings; sem integração no fim do download |
+| Campos avançados em `AppSettings` (formato vídeo, bitrate, banda, legendas, notificações) | Implementado em `DownloadJob` + `build_ytdl_opts` (`core/downloader.py`) |
+| Idioma da interface (`AppSettings.language`) | Só UI/JSON por enquanto (não traduz a interface) |
+| Notificações ao concluir | Implementado (`core/notifications.py`, Linux/macOS/Windows) |
 | Tema claro/escuro | Não implementado (apenas dark em `app`) |
 
-**Regra:** não assumir que um toggle em Configurações altera o download até existir no `DownloadJob` e em `YoutubeDownloader._build_opts` (ou equivalente).
+**Regra:** não assumir que um toggle em Configurações altera o download até existir em `DownloadJob` e em `build_ytdl_opts()` (`core/downloader.py`). Salvar em Configurações antes de baixar se acabou de mudar opções avançadas.
 
 ## Padrões de código (resumo)
 
@@ -121,14 +127,14 @@ Detalhes: regras em [`.cursor/rules/`](.cursor/rules/) e [CONTRIBUTING.md](CONTR
 
 ### Deve (quando mexer na área)
 
-1. **Extrair `DownloadsView`** de `app.py` para `ui/downloads_view.py` — mover `_build_download_view` e handlers de preview/download; `app` fica shell + fila de eventos.
-2. **Ligar settings ao downloader** — estender `DownloadJob` e opções yt-dlp para `video_format`, `audio_bitrate`, `bandwidth_limit_kbps`, legendas, etc.
+1. ~~**Extrair `DownloadsView`**~~ — feito (`ui/downloads_view.py`).
+2. ~~**Ligar settings ao downloader**~~ — feito (`DownloadJob`, `build_ytdl_opts`, `build_download_job`).
 
 ### Pode (baixa urgência)
 
-3. Unificar mapas `QUALITY_DISPLAY_LABELS` / `QUALITY_FROM_DISPLAY` usados em `app.py` e `settings_view.py`.
-4. Tipar `ProgressEvent.preview` como `Optional[VideoPreview]`.
-5. Renomear `_show_preferences` → `_open_settings` (legado do diálogo antigo).
+3. ~~Unificar mapas de qualidade~~ — rótulos em `config.py` (`QUALITY_DISPLAY_LABELS`); consumidos por `downloads_view` e `settings_view`.
+4. ~~Tipar `ProgressEvent.preview`~~ — feito (`Optional[VideoPreview]` em `models.py`).
+5. ~~Renomear `_show_preferences` → `_open_settings`~~ — feito em `app.py`.
 
 ### Evitar
 
@@ -140,8 +146,9 @@ Detalhes: regras em [`.cursor/rules/`](.cursor/rules/) e [CONTRIBUTING.md](CONTR
 
 1. PR/commit de estrutura separado de mudança de comportamento.
 2. Extrair código, rodar `pytest`, depois evoluir.
-3. Ao extrair função pura de `app.py`, adicionar teste em `tests/`.
-4. Novas telas: arquivo em `ui/` + entrada em `NavSidebar.ITEMS` + `_view_frames`.
+3. Ao extrair função pura de `core/` ou views, adicionar teste em `tests/` (ex.: `test_download_opts.py` para `build_ytdl_opts`).
+4. Novas telas: arquivo em `ui/` + entrada em `NavSidebar.ITEMS` + `_view_frames` em `app.py`.
+5. Em `CTkLabel`, não usar `border_width` / `border_color` — usar `CTkFrame` com borda (ver `history_view.py`).
 
 Ver regra [`.cursor/rules/refactoring.mdc`](.cursor/rules/refactoring.mdc).
 

@@ -75,13 +75,16 @@ python -m youtube_downloader
 - Download de vídeo único; playlist só se marcar **Baixar playlist inteira**
 - Preview com thumbnail e título ao colar a URL
 - Escolha de qualidade: Melhor disponível, 1080p, 720p, 480p
-- Vídeos com faixas separadas são mesclados automaticamente em **MP4** (requer FFmpeg; incluído no `.exe` gerado por `build.ps1`)
+- Vídeos com faixas separadas são mesclados em **MP4** ou **WebM** conforme Configurações (requer FFmpeg; incluído no `.exe` gerado por `build.ps1`)
 - Modo somente áudio (MP3)
 - Barra de progresso, label de status e log de marcos
 - Progresso de playlist (ex.: `3/10 concluídos`)
-- Preferências em `settings.json` (pasta, qualidade, áudio, playlist e opções avançadas)
-- Navegação por **sidebar**: Downloads, Biblioteca (em breve), Histórico, Configurações
-- Página **Histórico** com downloads recentes (persistido em `history.json`, local)
+- Preferências em `settings.json` (pasta, qualidade, áudio, playlist e opções avançadas — formato WebM/MP4, bitrate MP3, limite de banda, legendas, tema claro/escuro, `cookies.txt` e notificação ao concluir aplicados no download)
+- **Fila de downloads**: adicione várias URLs e processe em sequência
+- Navegação por **sidebar**: Downloads, Biblioteca, Histórico, Configurações
+- Página **Biblioteca** — lista arquivos de mídia na pasta de destino
+- Página **Histórico** com downloads recentes (abrir pasta/arquivo, baixar de novo; `history.json` local)
+- Botões **Abrir pasta** / **Abrir arquivo** após cada download na tela Downloads
 - Página **Configurações** com cards Geral, Qualidade e Formato, Avançado
 - Atalhos: `Ctrl+V` colar URL; `Ctrl+,` ou ícone ⚙ abrir Configurações
 - Cancelamento de download em andamento
@@ -97,7 +100,7 @@ Veja o backlog futuro em [ROADMAP.md](ROADMAP.md).
 5. Para baixar todos os vídeos de uma playlist, marque **Baixar playlist inteira**
 6. Clique em **Baixar**
 
-Consulte **Histórico** na sidebar para reabrir arquivos baixados recentemente.
+Use **+ Adicionar à fila** para enfileirar vários links antes de baixar. Consulte **Histórico** para reabrir ou **baixar de novo** (↻); **Biblioteca** mostra tudo na pasta de destino.
 
 ## Gerar executável (.exe)
 

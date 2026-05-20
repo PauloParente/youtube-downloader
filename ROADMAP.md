@@ -32,17 +32,16 @@ Melhorias implementadas (Fases 1–3) e backlog futuro (Fase 4).
 |------|-----------|
 | Biblioteca | Tela placeholder na sidebar — organizar arquivos baixados |
 | Fila de downloads | Várias URLs em sequência com estado por item |
-| Legendas | UI em Configurações existe; falta integrar `writesubtitles` no downloader |
+| Legendas | Integrado (`writesubtitles` via Configurações → `DownloadJob`) |
 | Cookies | `cookies.txt` para conteúdo restrito |
 | Tema claro/escuro | Toggle + persistir em settings |
 | Arrastar URL | Drag-and-drop na janela (ex. tkinterdnd2) |
 | Formatos extras | MKV além de MP4/WebM |
-| Notificações / banda / idioma | Campos em settings; integração com yt-dlp pendente |
+| Notificações / banda | Integrado no download; idioma da UI ainda só persistido em JSON |
 
 ## Ordem sugerida para Fase 4
 
-1. Integrar legendas e notificações (settings já existem)
-2. Tema claro/escuro
+1. Tema claro/escuro
 3. Fila de downloads
 4. Biblioteca (listagem real)
 5. Cookies
