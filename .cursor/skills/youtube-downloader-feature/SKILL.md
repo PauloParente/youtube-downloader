@@ -15,7 +15,7 @@ Playbook para opções que afetam o yt-dlp. Arquitetura: [AGENTS.md](../../../AG
 ## Antes de codar
 
 - [ ] Ler em AGENTS.md: tabela *Implementado vs. pendente* e regra **Salvar** em Configurações.
-- [ ] Opções da tela **Downloads** (pasta, qualidade, áudio, playlist) aplicam-se ao baixar; opções em **Configurações** exigem **Salvar** (ou valor já em `settings.json`).
+- [ ] Opções da tela **Downloads** (pasta, qualidade, áudio) aplicam-se ao baixar; opções em **Configurações** exigem **Salvar** (ou valor já em `settings.json`).
 
 ## Checklist por camada
 

@@ -71,7 +71,6 @@ class SettingsView(ctk.CTkScrollableFrame):
         self._bandwidth_var = tk.StringVar(value="0")
         self._notify_var = tk.BooleanVar(value=True)
         self._subtitles_var = tk.BooleanVar(value=False)
-        self._playlist_var = tk.BooleanVar(value=False)
         self._audio_only_var = tk.BooleanVar(value=False)
 
         pad = 24
@@ -241,17 +240,9 @@ class SettingsView(ctk.CTkScrollableFrame):
             "Tentar baixar legendas PT-BR sempre que disponíveis.",
             self._subtitles_var,
         )
-        self._add_toggle_row(
-            advanced_body,
-            6,
-            "Baixar playlist inteira por padrão",
-            "Ao colar link de playlist, marcar opção automaticamente.",
-            self._playlist_var,
-        )
-
-        self._field_label(advanced_body, 8, "Arquivo de cookies (cookies.txt)")
+        self._field_label(advanced_body, 6, "Arquivo de cookies (cookies.txt)")
         cookies_row = ctk.CTkFrame(advanced_body, fg_color="transparent")
-        cookies_row.grid(row=9, column=0, sticky="ew", pady=(0, 8))
+        cookies_row.grid(row=7, column=0, sticky="ew", pady=(0, 8))
         cookies_row.grid_columnconfigure(0, weight=1)
         self._cookies_var = tk.StringVar()
         ctk.CTkEntry(
@@ -434,7 +425,6 @@ class SettingsView(ctk.CTkScrollableFrame):
         self._bandwidth_var.set(str(settings.bandwidth_limit_kbps))
         self._notify_var.set(settings.notify_on_complete)
         self._subtitles_var.set(settings.auto_download_subtitles)
-        self._playlist_var.set(settings.download_playlist)
         self._audio_only_var.set(settings.audio_only)
 
     def _browse_folder(self) -> None:
@@ -484,7 +474,6 @@ class SettingsView(ctk.CTkScrollableFrame):
             output_dir=self._output_dir.get().strip() or str(DEFAULT_DOWNLOADS_DIR),
             quality=quality,
             audio_only=self._audio_only_var.get(),
-            download_playlist=self._playlist_var.get(),
             language=lang,
             video_format=vf,
             export_profile=export_profile,

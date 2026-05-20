@@ -11,7 +11,7 @@ import threading
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import filedialog
-from typing import Optional
+from typing import Literal, Optional
 
 import customtkinter as ctk
 from PIL import Image
@@ -36,10 +36,18 @@ from youtube_downloader.core.metadata import (
     is_youtube_url,
 )
 from youtube_downloader.core.download_job_builder import build_download_job
+from youtube_downloader.core.playlist_urls import (
+    PlaylistExpandError,
+    PlaylistMode,
+    UrlKind,
+    classify_youtube_url,
+    resolve_download_urls,
+)
 from youtube_downloader.core.models import DownloadJob, EventType, ProgressEvent
 from youtube_downloader.core.settings import AppSettings
 from youtube_downloader.core.text_utils import truncate_text
 from youtube_downloader.ui.layout_utils import apply_wraplength_from_widget
+from youtube_downloader.ui.playlist_choice_dialog import ask_video_in_playlist_choice
 from youtube_downloader.ui.theme import (
     ACCENT,
     ACCENT_HOVER,
@@ -62,7 +70,6 @@ logger = get_logger(__name__)
 PREVIEW_DEBOUNCE_MS = 600
 THUMB_DISPLAY_SIZE = (240, 135)
 SECTION_GAP = 10
-QUEUE_SCROLL_HEIGHT = 132
 QUEUE_URL_TRUNCATE = 58
 DEFAULT_STATUS_TEXT = "Pronto para baixar."
 
@@ -79,10 +86,12 @@ class DownloadsView(ctk.CTkFrame):
         on_add_history: Callable[..., None],
         on_get_app_settings: Callable[[], AppSettings],
         on_enqueue_url: Callable[[str], bool],
+        on_enqueue_urls: Callable[[list[str]], int],
         get_queue_snapshot: Callable[[], list[str]],
         on_remove_queue_at: Callable[[int], None],
         on_clear_queue: Callable[[], None],
         pop_next_queue_url: Callable[[], Optional[str]],
+        on_sync_queue_ui: Callable[[], None],
         initial_output_dir: str,
         **kwargs,
     ) -> None:
@@ -94,13 +103,19 @@ class DownloadsView(ctk.CTkFrame):
         self._on_add_history = on_add_history
         self._get_app_settings = on_get_app_settings
         self._on_enqueue_url = on_enqueue_url
+        self._on_enqueue_urls = on_enqueue_urls
         self._get_queue_snapshot = get_queue_snapshot
+        self._expanding_playlist = False
+        self._stop_batch_on_cancel = False
+        self._history_meta_cache: dict[str, VideoPreview] = {}
         self._on_remove_queue_at = on_remove_queue_at
         self._on_clear_queue = on_clear_queue
         self._pop_next_queue_url = pop_next_queue_url
-        self._queue_rows_inner: Optional[ctk.CTkFrame] = None
+        self._on_sync_queue_ui = on_sync_queue_ui
 
         self._is_downloading = False
+        self._last_progress_percent: Optional[float] = None
+        self._now_playing_title: Optional[str] = None
         self._output_dir = tk.StringVar(value=initial_output_dir)
         self._preview_after_id: Optional[str] = None
         self._preview_request_id = 0
@@ -137,7 +152,6 @@ class DownloadsView(ctk.CTkFrame):
         if settings.quality in QUALITY_OPTIONS:
             self._set_quality_combo(settings.quality)
         self._audio_only_var.set(settings.audio_only)
-        self._playlist_var.set(settings.download_playlist)
         self._on_audio_toggle()
 
     def paste_url(self) -> None:
@@ -149,8 +163,36 @@ class DownloadsView(ctk.CTkFrame):
     def reset_download_status(self) -> None:
         self._reset_download_status()
 
-    def refresh_queue_panel(self) -> None:
-        self._update_queue_panel()
+    def append_log(self, message: str) -> None:
+        self._append_log(message)
+
+    def cancel_download(self) -> None:
+        self._cancel_download()
+
+    def skip_to_next_download(self) -> None:
+        self._skip_to_next_download()
+
+    def get_now_playing_meta(self) -> dict:
+        url = self._url_entry.get().strip()
+        cached = self._history_meta_cache.get(url)
+        title = (self._now_playing_title or "").strip()
+        if not title and cached and cached.title:
+            title = cached.title.strip()
+        if not title and self._current_preview and self._current_preview.title:
+            title = self._current_preview.title.strip()
+        status = DEFAULT_STATUS_TEXT
+        if hasattr(self, "_status_label"):
+            status = self._status_label.cget("text") or status
+        return {
+            "active": self._is_downloading,
+            "url": url,
+            "title": title,
+            "status": status,
+            "percent": self._last_progress_percent,
+            "thumbnail_bytes": (
+                cached.thumbnail_bytes if cached and cached.thumbnail_bytes else None
+            ),
+        }
 
     def set_url_and_focus(self, url: str) -> None:
         if self._is_downloading:
@@ -167,12 +209,18 @@ class DownloadsView(ctk.CTkFrame):
         self._set_download_status(text)
         self._schedule_status_reset(reset_after_ms)
 
+    def should_continue_queue_after_cancel(self) -> bool:
+        """True when cancel was Skip (advance queue), not Stop all."""
+        return not self._stop_batch_on_cancel and bool(self._get_queue_snapshot())
+
     def start_download_for_url(self, url: str) -> None:
-        if self._is_downloading:
+        cleaned = url.strip()
+        if not cleaned:
             return
         self._url_entry.delete(0, "end")
-        self._url_entry.insert(0, url)
-        self._start_download()
+        self._url_entry.insert(0, cleaned)
+        self._schedule_preview()
+        self._run_download_job_for_url(cleaned)
 
     def force_release_download_ui(self) -> None:
         """Recover when the worker finished but a terminal UI event was missed."""
@@ -190,10 +238,7 @@ class DownloadsView(ctk.CTkFrame):
         self._quality_combo.set(label)
 
     def _update_progress_percent(self, percent: Optional[float]) -> None:
-        if percent is None:
-            self._progress_pct_label.configure(text="0%")
-        else:
-            self._progress_pct_label.configure(text=f"{min(percent, 1.0) * 100:.0f}%")
+        self._last_progress_percent = percent
 
     def _toggle_log_panel(self) -> None:
         if self._log_body is None:
@@ -262,12 +307,18 @@ class DownloadsView(ctk.CTkFrame):
             command=self._clear_url,
             **SECONDARY_BTN,
         )
-        self._clear_url_btn.grid(row=0, column=2)
-
-        self._build_queue_section(scroll, cp)
+        self._clear_url_btn.grid(row=0, column=2, padx=(0, 8))
+        self._enqueue_btn = ctk.CTkButton(
+            url_outer,
+            text="+ Fila",
+            width=72,
+            command=self._enqueue_current_url,
+            **SECONDARY_BTN,
+        )
+        self._enqueue_btn.grid(row=0, column=3)
 
         mid = ctk.CTkFrame(scroll, fg_color="transparent")
-        mid.grid(row=3, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
+        mid.grid(row=2, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
         mid.grid_columnconfigure(0, weight=3)
         mid.grid_columnconfigure(1, weight=2)
 
@@ -350,25 +401,13 @@ class DownloadsView(ctk.CTkFrame):
             hover_color=ACCENT_HOVER,
         )
         self._audio_checkbox.grid(row=1, column=0, padx=14, pady=4, sticky="w")
-        self._playlist_var = tk.BooleanVar(value=False)
-        self._playlist_checkbox = ctk.CTkCheckBox(
-            opts_card,
-            text="Baixar playlist",
-            variable=self._playlist_var,
-            command=self._on_options_changed,
-            font=ctk.CTkFont(size=13),
-            text_color=TEXT_PRIMARY,
-            fg_color=ACCENT,
-            hover_color=ACCENT_HOVER,
-        )
-        self._playlist_checkbox.grid(row=2, column=0, padx=14, pady=4, sticky="w")
         ctk.CTkLabel(
             opts_card,
             text="Qualidade",
             font=ctk.CTkFont(size=12),
             text_color=TEXT_SECONDARY,
             anchor="w",
-        ).grid(row=3, column=0, padx=14, pady=(12, 6), sticky="w")
+        ).grid(row=2, column=0, padx=14, pady=(12, 6), sticky="w")
         self._quality_combo = ctk.CTkComboBox(
             opts_card,
             values=QUALITY_COMBO_VALUES,
@@ -382,10 +421,10 @@ class DownloadsView(ctk.CTkFrame):
             text_color=TEXT_PRIMARY,
         )
         self._set_quality_combo(QUALITY_OPTIONS[0])
-        self._quality_combo.grid(row=4, column=0, padx=14, pady=(0, 14), sticky="ew")
+        self._quality_combo.grid(row=3, column=0, padx=14, pady=(0, 14), sticky="ew")
 
         bottom = ctk.CTkFrame(scroll, fg_color="transparent")
-        bottom.grid(row=4, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
+        bottom.grid(row=3, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
         bottom.grid_columnconfigure(0, weight=1)
         bottom.grid_columnconfigure(1, weight=1)
 
@@ -458,36 +497,16 @@ class DownloadsView(ctk.CTkFrame):
         self._footer.grid(row=1, column=0, padx=cp, pady=(8, 16), sticky="ew")
         footer = self._footer
         footer.grid_columnconfigure(0, weight=1)
-        status_row = ctk.CTkFrame(footer, fg_color="transparent")
-        status_row.grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        status_row.grid_columnconfigure(0, weight=1)
         self._status_label = ctk.CTkLabel(
-            status_row,
+            footer,
             text=DEFAULT_STATUS_TEXT,
             anchor="w",
             text_color=TEXT_SECONDARY,
             font=ctk.CTkFont(size=12),
         )
-        self._status_label.grid(row=0, column=0, sticky="w")
-        self._progress_pct_label = ctk.CTkLabel(
-            status_row,
-            text="0%",
-            anchor="e",
-            text_color=TEXT_SECONDARY,
-            font=ctk.CTkFont(size=12),
-        )
-        self._progress_pct_label.grid(row=0, column=1, sticky="e")
-        self._progress_bar = ctk.CTkProgressBar(
-            footer, height=6, progress_color=ACCENT, fg_color=("#2a2a2a", "#2a2a2a")
-        )
-        self._progress_bar.set(0)
-        self._progress_bar.grid(row=1, column=0, sticky="ew", pady=(0, 4))
-        self._playlist_progress_label = ctk.CTkLabel(
-            footer, text="", anchor="w", text_color=TEXT_MUTED, font=ctk.CTkFont(size=11)
-        )
-        self._playlist_progress_label.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        self._status_label.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self._btn_row = ctk.CTkFrame(footer, fg_color="transparent")
-        self._btn_row.grid(row=3, column=0, sticky="ew")
+        self._btn_row.grid(row=1, column=0, sticky="ew")
         self._btn_row.grid_columnconfigure(3, weight=1)
         self._btn_row.bind("<Configure>", self._on_footer_resize)
         btn_row = self._btn_row
@@ -536,8 +555,8 @@ class DownloadsView(ctk.CTkFrame):
             **PRIMARY_BTN,
         )
         self._download_btn.grid(row=0, column=4, sticky="e")
-        self._sync_cancel_button()
-        self._update_queue_panel()
+        self._sync_action_buttons()
+        self._on_sync_queue_ui()
         self.after_idle(self._on_view_configure)
         self.after_idle(lambda: self._apply_footer_button_layout(False))
 
@@ -616,147 +635,6 @@ class DownloadsView(ctk.CTkFrame):
             self._cancel_btn.grid(row=0, column=2, padx=(0, 8))
             self._download_btn.grid(row=0, column=4, sticky="e")
         self.after_idle(self._sync_scroll_viewport)
-
-    def _build_queue_section(self, parent: ctk.CTkBaseClass, pad: int) -> None:
-        self._queue_card = ctk.CTkFrame(parent, **CARD_STYLE)
-        self._queue_card.grid(row=2, column=0, padx=pad, pady=(0, SECTION_GAP), sticky="ew")
-        self._queue_card.grid_columnconfigure(0, weight=1)
-
-        header = ctk.CTkFrame(self._queue_card, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 6))
-        header.grid_columnconfigure(0, weight=1)
-
-        self._queue_title_label = ctk.CTkLabel(
-            header,
-            text="Fila de downloads",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color=TEXT_PRIMARY,
-            anchor="w",
-        )
-        self._queue_title_label.grid(row=0, column=0, sticky="w")
-
-        self._clear_queue_btn = ctk.CTkButton(
-            header,
-            text="Limpar fila",
-            width=100,
-            command=self._clear_queue,
-            state="disabled",
-            **SECONDARY_BTN,
-        )
-        self._clear_queue_btn.grid(row=0, column=1, padx=(8, 0))
-
-        self._queue_active_label = ctk.CTkLabel(
-            self._queue_card,
-            text="",
-            anchor="w",
-            font=ctk.CTkFont(size=11),
-            text_color=TEXT_MUTED,
-            justify="left",
-        )
-        self._queue_active_label.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 4))
-        self._queue_active_label.grid_remove()
-
-        self._queue_scroll = ctk.CTkScrollableFrame(
-            self._queue_card,
-            height=QUEUE_SCROLL_HEIGHT,
-            fg_color=("gray18", "gray14"),
-            corner_radius=6,
-        )
-        self._queue_scroll.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 8))
-        self._queue_scroll.grid_columnconfigure(0, weight=1)
-
-        self._queue_rows_inner = ctk.CTkFrame(self._queue_scroll, fg_color="transparent")
-        self._queue_rows_inner.grid(row=0, column=0, sticky="ew")
-        self._queue_rows_inner.grid_columnconfigure(1, weight=1)
-
-        actions = ctk.CTkFrame(self._queue_card, fg_color="transparent")
-        actions.grid(row=3, column=0, sticky="e", padx=12, pady=(0, 10))
-        ctk.CTkButton(
-            actions,
-            text="+ Adicionar à fila",
-            width=150,
-            command=self._enqueue_current_url,
-            **SECONDARY_BTN,
-        ).pack(side="right")
-
-    def _update_queue_panel(self) -> None:
-        if not hasattr(self, "_queue_title_label"):
-            return
-        count = len(self._get_queue_snapshot())
-        suffix = f" ({count})" if count else ""
-        self._queue_title_label.configure(text=f"Fila de downloads{suffix}")
-        self._clear_queue_btn.configure(state="normal" if count else "disabled")
-        self._update_queue_active_label()
-        self._render_queue_rows()
-
-    def _update_queue_active_label(self) -> None:
-        if self._is_downloading:
-            url = self._url_entry.get().strip()
-            if url:
-                self._queue_active_label.configure(
-                    text=f"Baixando agora: {truncate_text(url, QUEUE_URL_TRUNCATE)}"
-                )
-                self._queue_active_label.grid()
-                return
-        self._queue_active_label.grid_remove()
-
-    def _render_queue_rows(self) -> None:
-        if self._queue_rows_inner is None:
-            return
-        for child in self._queue_rows_inner.winfo_children():
-            child.destroy()
-
-        urls = self._get_queue_snapshot()
-        if not urls:
-            ctk.CTkLabel(
-                self._queue_rows_inner,
-                text="Nenhum link na fila",
-                font=ctk.CTkFont(size=11),
-                text_color=TEXT_MUTED,
-                anchor="w",
-            ).grid(row=0, column=0, columnspan=3, sticky="w", padx=4, pady=8)
-            return
-
-        for index, url in enumerate(urls):
-            row = ctk.CTkFrame(self._queue_rows_inner, fg_color="transparent")
-            row.grid(row=index, column=0, sticky="ew", pady=2)
-            row.grid_columnconfigure(1, weight=1)
-
-            ctk.CTkLabel(
-                row,
-                text=f"{index + 1}.",
-                width=22,
-                font=ctk.CTkFont(size=11),
-                text_color=TEXT_MUTED,
-                anchor="e",
-            ).grid(row=0, column=0, padx=(0, 6))
-
-            ctk.CTkLabel(
-                row,
-                text=truncate_text(url, QUEUE_URL_TRUNCATE),
-                font=ctk.CTkFont(size=11),
-                text_color=TEXT_PRIMARY,
-                anchor="w",
-            ).grid(row=0, column=1, sticky="ew")
-
-            ctk.CTkButton(
-                row,
-                text="🗑",
-                width=36,
-                height=28,
-                command=lambda i=index: self._remove_queue_item(i),
-                **SECONDARY_BTN,
-            ).grid(row=0, column=2, padx=(6, 0))
-
-    def _remove_queue_item(self, index: int) -> None:
-        self._on_remove_queue_at(index)
-        self._append_log(f"Removido da fila (posição {index + 1}).")
-
-    def _clear_queue(self) -> None:
-        if not self._get_queue_snapshot():
-            return
-        self._on_clear_queue()
-        self._append_log("Fila esvaziada.")
 
     def _schedule_preview(self) -> None:
         if self._is_downloading:
@@ -880,6 +758,10 @@ class DownloadsView(ctk.CTkFrame):
                 self._url_entry.get().strip(),
             )
             return
+
+        if not preview.error:
+            self._history_meta_cache[url.strip()] = preview
+
         if self._is_downloading:
             return
 
@@ -913,9 +795,6 @@ class DownloadsView(ctk.CTkFrame):
             self._preview_subtitle_label.configure(
                 text=f"{channel} · {duration}" if duration else channel
             )
-
-        if preview.is_playlist and self._get_app_settings().download_playlist:
-            self._playlist_var.set(True)
 
         duration_text = format_duration(preview.duration_seconds)
         if duration_text:
@@ -962,7 +841,6 @@ class DownloadsView(ctk.CTkFrame):
             output_dir=self._output_dir.get().strip() or str(DEFAULT_DOWNLOADS_DIR),
             quality=self._get_quality_internal(),
             audio_only=self._audio_only_var.get(),
-            download_playlist=self._playlist_var.get(),
         )
 
     def _on_options_changed(self) -> None:
@@ -992,17 +870,161 @@ class DownloadsView(ctk.CTkFrame):
         self._log_box.delete("1.0", "end")
         self._log_box.configure(state="disabled")
 
-    def _update_playlist_progress_label(
+    def _set_expand_busy(self, busy: bool) -> None:
+        self._expanding_playlist = busy
+        if busy:
+            self._set_download_status("A obter vídeos da playlist…")
+            if self._status_reset_after_id is not None:
+                self.after_cancel(self._status_reset_after_id)
+                self._status_reset_after_id = None
+        elif not self._is_downloading:
+            self._schedule_status_reset()
+        if self._is_downloading:
+            return
+        state = "disabled" if busy else "normal"
+        self._download_btn.configure(state=state)
+        self._enqueue_btn.configure(state=state)
+
+    def _needs_network_expand(
+        self, kind: UrlKind, playlist_mode: Optional[PlaylistMode]
+    ) -> bool:
+        if kind == UrlKind.PLAYLIST:
+            return True
+        if kind == UrlKind.VIDEO_IN_PLAYLIST and playlist_mode == "full":
+            return True
+        return False
+
+    def _resolve_urls_async(
         self,
-        completed: Optional[int],
-        total: Optional[int],
+        url: str,
+        playlist_mode: Optional[PlaylistMode],
+        on_done: Callable[[Optional[list[str]], Optional[str]], None],
     ) -> None:
-        if total is not None and total >= 2 and completed is not None:
-            self._playlist_progress_label.configure(
-                text=f"Playlist: {completed}/{total} concluídos"
+        def worker() -> None:
+            try:
+                urls = resolve_download_urls(url, playlist_mode=playlist_mode)
+                self.after(0, lambda: on_done(urls, None))
+            except PlaylistExpandError as exc:
+                self.after(0, lambda: on_done(None, str(exc)))
+            except Exception as exc:
+                logger.exception("Falha ao resolver URLs: %s", url[:80])
+                self.after(0, lambda: on_done(None, str(exc)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _resolve_and_act(
+        self,
+        url: str,
+        *,
+        action: Literal["download", "enqueue"],
+    ) -> None:
+        if self._expanding_playlist:
+            return
+        cleaned = url.strip()
+        if not cleaned or not is_youtube_url(cleaned):
+            self._append_log("Informe uma URL válida do YouTube.")
+            return
+
+        kind = classify_youtube_url(cleaned)
+        playlist_mode: Optional[PlaylistMode] = None
+        if kind == UrlKind.VIDEO_IN_PLAYLIST:
+            count = (
+                self._current_preview.playlist_count
+                if self._current_preview and self._current_preview.is_playlist
+                else None
             )
+            playlist_mode = ask_video_in_playlist_choice(
+                self.winfo_toplevel(),
+                playlist_count=count,
+            )
+            if playlist_mode is None:
+                return
+
+        if self._needs_network_expand(kind, playlist_mode):
+
+            def on_done(urls: Optional[list[str]], error: Optional[str]) -> None:
+                self._set_expand_busy(False)
+                if error or not urls:
+                    self._append_log(
+                        f"Erro ao obter vídeos da playlist: {error or 'lista vazia'}"
+                    )
+                    return
+                self._on_urls_resolved(urls, action=action)
+
+            self._set_expand_busy(True)
+            self._resolve_urls_async(cleaned, playlist_mode, on_done)
+            return
+
+        try:
+            urls = resolve_download_urls(cleaned, playlist_mode=playlist_mode)
+        except (PlaylistExpandError, ValueError) as exc:
+            self._append_log(f"Erro: {exc}")
+            return
+        self._on_urls_resolved(urls, action=action)
+
+    def _log_enqueue_result(self, added: int, total: int) -> None:
+        if total <= 1:
+            if added:
+                self._append_log("Adicionado à fila.")
+            else:
+                self._append_log("URL já está na fila.")
+            return
+        skipped = total - added
+        msg = f"Playlist: {added} vídeo(s) adicionados à fila."
+        if skipped:
+            msg += f" ({skipped} já estavam na fila.)"
+        self._append_log(msg)
+
+    def _on_urls_resolved(
+        self,
+        urls: list[str],
+        *,
+        action: Literal["download", "enqueue"],
+    ) -> None:
+        if not urls:
+            self._append_log("Nenhum vídeo encontrado para enfileirar.")
+            return
+
+        if len(urls) == 1:
+            if action == "enqueue":
+                added = self._on_enqueue_urls(urls)
+                self._log_enqueue_result(added, 1)
+                return
+            self._run_download_job_for_url(urls[0])
+            return
+
+        if action == "enqueue":
+            added = self._on_enqueue_urls(urls)
+            self._log_enqueue_result(added, len(urls))
+            return
+
+        if self._is_downloading:
+            added = self._on_enqueue_urls(urls)
+            self._log_enqueue_result(added, len(urls))
+            return
+
+        rest = urls[1:]
+        if rest:
+            added_rest = self._on_enqueue_urls(rest)
+            skipped = len(rest) - added_rest
+            msg = (
+                f"Playlist: {len(urls)} vídeos — iniciando o primeiro"
+                f", {added_rest} na fila"
+            )
+            if skipped:
+                msg += f" ({skipped} já estavam na fila)"
+            self._append_log(msg + ".")
         else:
-            self._playlist_progress_label.configure(text="")
+            self._append_log(f"Playlist: 1 vídeo — iniciando.")
+
+        first = urls[0]
+        self._url_entry.delete(0, "end")
+        self._url_entry.insert(0, first)
+        self._schedule_preview()
+        self._append_log(
+            f"Iniciando: {truncate_text(first, QUEUE_URL_TRUNCATE)}"
+        )
+        self._run_download_job_for_url(first)
 
     def _update_open_file_button(self) -> None:
         enabled = bool(
@@ -1025,14 +1047,10 @@ class DownloadsView(ctk.CTkFrame):
             self._open_path_in_explorer(self._last_download_filepath)
 
     def _enqueue_current_url(self) -> None:
-        url = self._url_entry.get().strip()
-        if not url or not is_youtube_url(url):
-            self._append_log("Informe uma URL válida do YouTube para adicionar à fila.")
+        if self._is_downloading and self._expanding_playlist:
             return
-        if self._on_enqueue_url(url):
-            self._append_log(f"Adicionado à fila: {truncate_text(url, QUEUE_URL_TRUNCATE)}")
-        else:
-            self._append_log("URL já está na fila.")
+        url = self._url_entry.get().strip()
+        self._resolve_and_act(url, action="enqueue")
 
     def _browse_folder(self) -> None:
         if self._is_downloading:
@@ -1115,6 +1133,90 @@ class DownloadsView(ctk.CTkFrame):
             return self._current_preview.thumbnail_bytes
         return None
 
+    def _prefetch_history_meta(self, url: str) -> None:
+        """Fetch per-video title/thumbnail for history (preview UI pauses while downloading)."""
+        cleaned = url.strip()
+        if not cleaned or not is_youtube_url(cleaned):
+            return
+
+        def worker() -> None:
+            try:
+                meta = fetch_preview(cleaned)
+            except Exception:
+                logger.exception(
+                    "Falha ao obter metadados para historico: %s", cleaned[:80]
+                )
+                meta = VideoPreview(
+                    url=cleaned, title="", thumbnail_bytes=None, error="fetch failed"
+                )
+
+            def on_main() -> None:
+                if not meta.error:
+                    self._history_meta_cache[cleaned] = meta
+                    if meta.title:
+                        self._now_playing_title = meta.title.strip()
+                self._on_sync_queue_ui()
+
+            self.after(0, on_main)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _record_history_entry(self, event: ProgressEvent) -> None:
+        filepath = event.filepath
+        if not filepath or not os.path.isfile(filepath):
+            return
+
+        source_url = self._url_entry.get().strip()
+        meta = self._history_meta_cache.get(source_url)
+
+        def do_add(preview: Optional[VideoPreview]) -> None:
+            title = (event.title or "").strip()
+            if not title and preview and preview.title:
+                title = preview.title.strip()
+            if not title:
+                title = os.path.basename(filepath)
+            channel_name = (preview.uploader or "").strip() if preview else ""
+            channel_url = (preview.channel_url or "").strip() if preview else ""
+            thumb_bytes = (
+                preview.thumbnail_bytes
+                if preview and preview.thumbnail_bytes
+                else None
+            )
+            self._on_add_history(
+                filepath,
+                title,
+                source_url,
+                channel_name=channel_name,
+                channel_url=channel_url,
+                thumbnail_bytes=thumb_bytes,
+            )
+
+        if meta is not None and not meta.error:
+            do_add(meta)
+            return
+
+        if not source_url or not is_youtube_url(source_url):
+            do_add(None)
+            return
+
+        def worker() -> None:
+            try:
+                fetched = fetch_preview(source_url)
+            except Exception:
+                logger.exception(
+                    "Metadados do historico (fallback): %s", source_url[:80]
+                )
+                fetched = None
+
+            def on_main() -> None:
+                if fetched and not fetched.error:
+                    self._history_meta_cache[source_url] = fetched
+                do_add(fetched if fetched and not fetched.error else None)
+
+            self.after(0, on_main)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _set_controls_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
         # URL stays editable while downloading so the user can enqueue more links.
@@ -1129,41 +1231,57 @@ class DownloadsView(ctk.CTkFrame):
         else:
             self._update_open_file_button()
         self._audio_checkbox.configure(state=state)
-        self._playlist_checkbox.configure(state=state)
+        self._enqueue_btn.configure(state=state)
         if enabled:
             self._on_audio_toggle()
         else:
             self._quality_combo.configure(state="disabled")
         self._download_btn.configure(state=state)
-        self._sync_cancel_button()
-        self._update_queue_panel()
+        self._sync_action_buttons()
 
-    def _sync_cancel_button(self) -> None:
+    def _has_pending_queue(self) -> bool:
+        return bool(self._get_queue_snapshot())
+
+    def _sync_action_buttons(self) -> None:
         if self._is_downloading:
             self._cancel_btn.configure(
                 text="✕  Cancelar",
                 state="normal",
                 command=self._cancel_download,
+                fg_color=BTN_SECONDARY,
+                hover_color=BTN_SECONDARY_HOVER,
             )
         else:
             self._cancel_btn.configure(
                 text="Limpar URL",
                 state="normal",
                 command=self._clear_url,
+                fg_color=BTN_SECONDARY,
+                hover_color=BTN_SECONDARY_HOVER,
             )
+
+    def _between_queue_items_ui(self) -> None:
+        """Keep batch controls while the next queued item is about to start."""
+        self._is_downloading = True
+        self._last_progress_percent = 0.0
+        self._set_download_status("Preparando próximo da fila…")
+        self._sync_action_buttons()
+        self._on_sync_queue_ui()
 
     def _release_download_ui(self) -> None:
         self._is_downloading = False
+        self._stop_batch_on_cancel = False
+        self._last_progress_percent = None
+        self._now_playing_title = None
         self._set_controls_enabled(True)
         self._schedule_status_reset()
+        self._on_sync_queue_ui()
 
     def _start_download(self) -> None:
-        if self._is_downloading:
+        if self._is_downloading or self._expanding_playlist:
             return
 
         url = self._url_entry.get().strip()
-        output_dir = self._output_dir.get().strip()
-
         if not url:
             url = (self._pop_next_queue_url() or "").strip()
             if url:
@@ -1173,12 +1291,22 @@ class DownloadsView(ctk.CTkFrame):
                 self._append_log(
                     f"Iniciando da fila: {truncate_text(url, QUEUE_URL_TRUNCATE)}"
                 )
+                self._run_download_job_for_url(url)
             else:
                 logger.warning("Download bloqueado: URL vazia e fila vazia")
                 self._append_log(
                     "Erro: informe a URL do vídeo ou adicione links à fila."
                 )
-                return
+            return
+
+        self._resolve_and_act(url, action="download")
+
+    def _run_download_job_for_url(self, url: str) -> None:
+        cleaned = url.strip()
+        if not cleaned:
+            return
+
+        output_dir = self._output_dir.get().strip()
         if not output_dir:
             output_dir = str(DEFAULT_DOWNLOADS_DIR)
             self._output_dir.set(output_dir)
@@ -1191,30 +1319,29 @@ class DownloadsView(ctk.CTkFrame):
                 return
 
         job = build_download_job(
-            url=url,
+            url=cleaned,
             output_dir=output_dir,
             quality=self._get_quality_internal(),
             audio_only=self._audio_only_var.get(),
-            download_playlist=self._playlist_var.get(),
             preferences=self._get_app_settings(),
         )
         self._on_persist_settings()
+        self._prefetch_history_meta(cleaned)
 
         self._is_downloading = True
-        self._update_playlist_progress_label(0, None)
         if self._preview_after_id is not None:
             self.after_cancel(self._preview_after_id)
             self._preview_after_id = None
         self._set_controls_enabled(False)
-        self._progress_bar.set(0)
-        self._update_progress_percent(0)
+        self._last_progress_percent = 0.0
         if self._status_reset_after_id is not None:
             self.after_cancel(self._status_reset_after_id)
             self._status_reset_after_id = None
-        start_label = self._get_preview_title_for_log() or truncate_text(url, 60)
+        start_label = self._get_preview_title_for_log() or truncate_text(cleaned, 60)
         self._append_log(f"Iniciando download: {start_label}")
         self._set_download_status("Baixando…")
-        self._sync_cancel_button()
+        self._sync_action_buttons()
+        self._on_sync_queue_ui()
 
         self._on_start_download(job)
 
@@ -1222,13 +1349,34 @@ class DownloadsView(ctk.CTkFrame):
         if not self._is_downloading:
             self._clear_url()
             return
+        self._stop_batch_on_cancel = True
+        pending = len(self._get_queue_snapshot())
         logger.info(
-            "Usuario cancelou download: %s",
+            "Usuario cancelou downloads (fila=%d): %s",
+            pending,
             self._url_entry.get().strip(),
         )
         self._on_cancel_download()
+        if pending:
+            self._on_clear_queue()
+            self._append_log("Cancelando download e fila pendente…")
+        else:
+            self._append_log("Cancelando download…")
         self._set_download_status("Cancelando…")
-        self._append_log("Cancelando download...")
+
+    def _skip_to_next_download(self) -> None:
+        if not self._is_downloading:
+            return
+        if not self._has_pending_queue():
+            return
+        self._stop_batch_on_cancel = False
+        logger.info(
+            "Usuario pulou para proximo da fila: %s",
+            self._url_entry.get().strip(),
+        )
+        self._on_cancel_download()
+        self._set_download_status("Pulando para o próximo…")
+        self._append_log("Pulando para o próximo da fila…")
 
     def handle_progress_event(self, event: ProgressEvent) -> None:
         if event.event_type == EventType.PREVIEW_READY:
@@ -1244,27 +1392,20 @@ class DownloadsView(ctk.CTkFrame):
             self._clear_preview()
             return
 
+        if event.title:
+            self._now_playing_title = event.title.strip()
+
         if event.event_type == EventType.PROGRESS:
             if event.percent is not None:
-                self._progress_bar.set(event.percent)
                 self._update_progress_percent(event.percent)
             if event.message:
                 self._set_download_status(event.message)
-            self._update_playlist_progress_label(
-                event.playlist_completed,
-                event.playlist_total,
-            )
 
         elif event.event_type == EventType.LOG:
             self._append_log(event.message)
             if event.percent is not None:
-                self._progress_bar.set(event.percent)
                 self._update_progress_percent(event.percent)
             self._set_download_status(event.message)
-            self._update_playlist_progress_label(
-                event.playlist_completed,
-                event.playlist_total,
-            )
 
         elif event.event_type in (
             EventType.DONE,
@@ -1273,40 +1414,36 @@ class DownloadsView(ctk.CTkFrame):
         ):
             try:
                 if event.percent is not None:
-                    self._progress_bar.set(event.percent)
                     self._update_progress_percent(event.percent)
                 elif event.event_type == EventType.DONE:
-                    self._progress_bar.set(1.0)
                     self._update_progress_percent(1.0)
                 self._append_log(event.message)
                 if event.event_type == EventType.DONE:
-                    self._set_download_status(
-                        "Download concluído. Use Limpar URL ou cole outro link."
-                    )
+                    if self._has_pending_queue():
+                        self._set_download_status("Vídeo concluído — próximo da fila…")
+                    else:
+                        self._set_download_status(
+                            "Download concluído. Use Limpar URL ou cole outro link."
+                        )
                     if event.filepath and os.path.isfile(event.filepath):
                         self._last_download_filepath = event.filepath
                         self._update_open_file_button()
                         try:
-                            self._on_add_history(
-                                event.filepath,
-                                self._get_preview_title_for_log(),
-                                self._url_entry.get().strip(),
-                                channel_name=self._get_preview_channel_name(),
-                                channel_url=self._get_preview_channel_url(),
-                                thumbnail_bytes=self._get_preview_thumbnail_bytes(),
-                            )
+                            self._record_history_entry(event)
                         except Exception:
                             logger.exception("Falha ao registrar download no historico")
                     self._url_entry.focus_set()
-                    self._update_playlist_progress_label(
-                        event.playlist_completed,
-                        event.playlist_total,
-                    )
                 elif event.event_type == EventType.ERROR:
                     self._set_download_status("Erro no download.")
-                    self._update_playlist_progress_label(None, None)
                 else:
                     self._set_download_status("Download cancelado.")
-                    self._update_playlist_progress_label(None, None)
             finally:
-                self._release_download_ui()
+                advance_after = (
+                    event.event_type in (EventType.DONE, EventType.CANCELLED)
+                    and self._has_pending_queue()
+                    and not self._stop_batch_on_cancel
+                )
+                if advance_after:
+                    self._between_queue_items_ui()
+                else:
+                    self._release_download_ui()

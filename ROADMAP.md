@@ -6,7 +6,7 @@ Estado do produto em relação ao código na branch `main`. Para arquitetura e c
 
 ### Fase 1 — Confiabilidade
 - Nomes de arquivo seguros (`restrictfilenames`, `windowsfilenames`)
-- Checkbox *Baixar playlist inteira* (padrão: só o vídeo da URL)
+- Playlists expandem para a fila (um download por vídeo; ver `core/playlist_urls.py`)
 - `settings.json` (pasta, qualidade, áudio, playlist)
 - Progresso de playlist na UI
 - Priorização DASH em `QUALITY_FORMATS` (evita regressão para 360p)
@@ -36,8 +36,8 @@ Estado do produto em relação ao código na branch `main`. Para arquitetura e c
 ### Fase 5 — Uso no dia a dia (entrega recente)
 | Área | O que existe hoje |
 |------|-------------------|
-| **Downloads** | Botões Abrir pasta / Abrir arquivo; status pós-download; marcar playlist no preview se a opção padrão estiver ativa |
-| **Fila** | Lista de URLs pendentes, remover item, limpar fila; processamento **sequencial** (`core/download_queue.py`) |
+| **Downloads** | Botões Abrir pasta / Abrir arquivo; status pós-download; preview de playlist com contagem de vídeos |
+| **Fila** | URLs de vídeo (`watch?v=`); playlists expandem para N itens; remover, limpar; **sequencial** (`core/download_queue.py`, `core/playlist_urls.py`) |
 | **Histórico** | Abrir pasta/arquivo, **baixar de novo** (↻), **excluir** (🗑); `source_url` em `history.json` |
 | **Biblioteca** | Lista + **filtro por nome** na pasta de destino (`ui/library_view.py`, `core/library_scan.py`) |
 | **Configurações** | Tema claro/escuro (`appearance_mode`); caminho para `cookies.txt`; rótulo **Idioma das legendas** (não traduz a UI) |

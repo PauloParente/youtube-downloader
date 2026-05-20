@@ -92,7 +92,7 @@ def build_ytdl_opts(job: DownloadJob, ffmpeg_dir: str) -> dict:
         "outtmpl": os.path.join(job.output_dir, "%(title)s.%(ext)s"),
         "format": format_string,
         "ffmpeg_location": ffmpeg_dir,
-        "noplaylist": not job.download_playlist,
+        "noplaylist": True,
         "ignoreerrors": False,
         "quiet": True,
         "no_warnings": True,
@@ -134,9 +134,6 @@ class YoutubeDownloader:
         self._current_title: Optional[str] = None
         self._current_job: Optional[DownloadJob] = None
         self._last_filepath: Optional[str] = None
-        self._playlist_completed = 0
-        self._playlist_total: Optional[int] = None
-        self._last_playlist_index: Optional[int] = None
         self._current_item_paths: set[str] = set()
         self._committed_paths: set[str] = set()
 
@@ -148,9 +145,6 @@ class YoutubeDownloader:
         self._current_title = None
         self._current_job = None
         self._last_filepath = None
-        self._playlist_completed = 0
-        self._playlist_total = None
-        self._last_playlist_index = None
         self._current_item_paths = set()
         self._committed_paths = set()
 
@@ -253,24 +247,6 @@ class YoutubeDownloader:
             if _ORPHAN_FRAGMENT_RE.search(name)
         ]
 
-    def _emit_playlist_progress(
-        self, on_event: Callable[[ProgressEvent], None]
-    ) -> None:
-        if self._playlist_total is None or self._playlist_total < 2:
-            return
-        on_event(
-            ProgressEvent(
-                event_type=EventType.PROGRESS,
-                message=(
-                    f"Playlist: {self._playlist_completed}/"
-                    f"{self._playlist_total} concluídos"
-                ),
-                playlist_completed=self._playlist_completed,
-                playlist_total=self._playlist_total,
-                title=self._current_title,
-            )
-        )
-
     def download(
         self,
         job: DownloadJob,
@@ -279,13 +255,12 @@ class YoutubeDownloader:
         self.reset()
 
         logger.info(
-            "Download iniciado: url=%s pasta=%s qualidade=%s audio_only=%s playlist=%s "
+            "Download iniciado: url=%s pasta=%s qualidade=%s audio_only=%s "
             "formato=%s bitrate=%s banda_kbps=%s legendas=%s",
             job.url,
             job.output_dir,
             job.quality,
             job.audio_only,
-            job.download_playlist,
             job.video_format,
             job.audio_bitrate,
             job.bandwidth_limit_kbps,
@@ -343,8 +318,6 @@ class YoutubeDownloader:
                         message=done_message,
                         percent=1.0,
                         filepath=self._last_filepath,
-                        playlist_completed=self._playlist_completed,
-                        playlist_total=self._playlist_total,
                     )
                 )
         except DownloadCancelled:
@@ -373,13 +346,6 @@ class YoutubeDownloader:
     def _format_progress_message(
         self, data: dict, percent: Optional[float]
     ) -> str:
-        info = data.get("info_dict") or {}
-        prefix = ""
-        playlist_index = info.get("playlist_index")
-        playlist_count = info.get("playlist_count")
-        if playlist_index is not None and playlist_count:
-            prefix = f"Vídeo {playlist_index}/{playlist_count} · "
-
         title = truncate_text(self._current_title or "…", 50)
         detail_parts: list[str] = []
         if percent is not None:
@@ -394,8 +360,8 @@ class YoutubeDownloader:
             detail_parts.append(f"{eta} restantes")
 
         if detail_parts:
-            return f"{prefix}Baixando: {title} — " + " · ".join(detail_parts)
-        return f"{prefix}Baixando: {title}…"
+            return f"Baixando: {title} — " + " · ".join(detail_parts)
+        return f"Baixando: {title}…"
 
     def _emit_merge_status(self, on_event: Callable[[ProgressEvent], None]) -> None:
         job = self._current_job
@@ -472,10 +438,6 @@ class YoutubeDownloader:
                 self._register_download_path(data.get("tmpfilename"))
                 self._register_download_path(data.get("filename"))
 
-                playlist_count = info.get("playlist_count")
-                if playlist_count and job.download_playlist:
-                    self._playlist_total = int(playlist_count)
-
                 total = data.get("total_bytes") or data.get("total_bytes_estimate")
                 downloaded = data.get("downloaded_bytes", 0)
                 percent: Optional[float] = None
@@ -497,8 +459,6 @@ class YoutubeDownloader:
                         message=self._format_progress_message(data, percent),
                         percent=percent,
                         title=self._current_title,
-                        playlist_completed=self._playlist_completed,
-                        playlist_total=self._playlist_total,
                     )
                 )
 
@@ -512,33 +472,18 @@ class YoutubeDownloader:
                             event_type=EventType.PROGRESS,
                             message="Baixando faixas de vídeo/áudio…",
                             title=self._current_title,
-                            playlist_completed=self._playlist_completed,
-                            playlist_total=self._playlist_total,
                         )
                     )
                 else:
                     if filename and os.path.isfile(filename):
                         self._last_filepath = filename
                         self._commit_download_path(filename)
-                    playlist_index = info.get("playlist_index")
-                    if (
-                        job.download_playlist
-                        and self._playlist_total
-                        and self._playlist_total >= 2
-                        and playlist_index is not None
-                        and playlist_index != self._last_playlist_index
-                    ):
-                        self._last_playlist_index = int(playlist_index)
-                        self._playlist_completed = self._last_playlist_index
-                        self._emit_playlist_progress(on_event)
                     on_event(
                         ProgressEvent(
                             event_type=EventType.LOG,
                             message=f"Processando: {basename}",
                             percent=1.0,
                             title=self._current_title,
-                            playlist_completed=self._playlist_completed,
-                            playlist_total=self._playlist_total,
                             filepath=filename or None,
                         )
                     )

@@ -97,16 +97,15 @@ python -m youtube_downloader
 
 ## Funcionalidades
 
-- Download de vídeo único; playlist só se marcar **Baixar playlist inteira**
+- Download de vídeo único; link de **playlist** expande automaticamente para vários vídeos na fila (um job por vídeo)
 - Preview com thumbnail e título ao colar a URL
 - Escolha de qualidade: Melhor disponível, 1080p, 720p, 480p
 - Vídeos com faixas separadas são mesclados em **MP4** ou **WebM** conforme Configurações (requer FFmpeg; incluído no `.exe` gerado por `build.ps1`)
 - Modo somente áudio (MP3)
-- Barra de progresso, label de status e log de marcos
-- Progresso de playlist (ex.: `3/10 concluídos`)
-- Preferências em `settings.json` (pasta, qualidade, áudio, playlist e opções avançadas — formato WebM/MP4, **perfil de exportação** (H.264 compatível com Windows ou melhor qualidade), bitrate MP3, limite de banda, legendas, tema claro/escuro, `cookies.txt` e notificação ao concluir aplicados no download)
-- **Fila de downloads**: adicione várias URLs, veja a lista, remova itens ou limpe a fila; processamento sequencial automático
-- Navegação por **sidebar**: Downloads, Biblioteca, Histórico, Configurações
+- Barra de progresso e status do download atual na tela **Fila**; log de marcos na tela Downloads
+- Preferências em `settings.json` (pasta, qualidade, áudio e opções avançadas — formato WebM/MP4, **perfil de exportação** (H.264 compatível com Windows ou melhor qualidade), bitrate MP3, limite de banda, legendas, tema claro/escuro, `cookies.txt` e notificação ao concluir aplicados no download)
+- **Fila de downloads**: **+ Fila** na tela Downloads; acompanhe o vídeo atual e a lista de pendentes na sidebar **Fila** (miniatura, progresso, Cancelar, Pular, remover por item); processamento sequencial automático
+- Navegação por **sidebar**: Downloads, Fila, Biblioteca, Histórico, Configurações
 - Página **Biblioteca** — lista arquivos de mídia na pasta de destino
 - Página **Histórico** — cards com thumbnail, nome do canal (link para o YouTube) e botão para abrir o vídeo no site (`history.json`); abrir arquivo/pasta, **Baixar de novo**, remover ou **Limpar histórico** (não apaga arquivos no disco)
 - Botões **Abrir pasta** / **Abrir arquivo** após cada download na tela Downloads
@@ -123,10 +122,11 @@ Veja o backlog futuro em [ROADMAP.md](ROADMAP.md).
 2. Cole a URL do vídeo ou da playlist (`Ctrl+V`)
 3. Escolha a pasta de destino (ou defina o padrão em **Configurações** na sidebar ou `Ctrl+,`)
 4. Selecione a qualidade ou marque "Somente áudio (MP3)"
-5. Para baixar todos os vídeos de uma playlist, marque **Baixar playlist inteira**
-6. Clique em **Baixar**
+5. Clique em **Baixar** (vídeo único) ou **+ Fila** para enfileirar sem iniciar
 
-Use **+ Adicionar à fila** para enfileirar links (também durante um download em andamento). A lista mostra a ordem; use **Limpar fila** ou **🗑** por item. **Histórico** mostra downloads recentes com data e URL para repetir; **Biblioteca** lista todos os arquivos na pasta de destino. A fila não é salva ao fechar o app.
+**Playlists:** ao colar um link de playlist (`playlist?list=…`) ou ao escolher *Playlist inteira* quando a URL traz `list=` junto com o vídeo, o app obtém os vídeos e coloca cada um na fila. **Baixar** com uma playlist no campo enfileira todos e inicia o primeiro; os restantes seguem em sequência. URL só com `watch?v=` baixa apenas esse vídeo.
+
+Use **+ Fila** para enfileirar sem iniciar (também durante um download). Abra **Fila** na sidebar para ver o download atual (miniatura e progresso), **Pular** para o próximo ou **🗑** por item nos pendentes. **Cancelar** no rodapé de Downloads ou na tela Fila interrompe tudo e esvazia a fila. **Histórico** registra cada vídeo concluído; **Biblioteca** lista arquivos na pasta de destino. A fila não é salva ao fechar o app.
 
 ### Redimensionar a janela
 

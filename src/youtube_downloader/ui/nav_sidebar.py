@@ -23,6 +23,7 @@ class NavSidebar(ctk.CTkFrame):
 
     ITEMS = (
         ("download", "⬇", "Downloads"),
+        ("queue", "☰", "Fila"),
         ("library", "▦", "Biblioteca"),
         ("history", "↺", "Histórico"),
         ("settings", "⚙", "Configurações"),

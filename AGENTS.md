@@ -44,8 +44,9 @@ src/youtube_downloader/
     text_utils.py                 # truncate, strip_ansi
   ui/
     theme.py                      # cores e estilos de botões
-    nav_sidebar.py                # sidebar Downloads / Biblioteca / Histórico / Configurações
-    downloads_view.py             # tela Downloads (URL, preview, progresso, log)
+    nav_sidebar.py                # sidebar Downloads / Fila / Biblioteca / Histórico / Configurações
+    downloads_view.py             # tela Downloads (URL, preview, log, + Fila, Baixar/Cancelar)
+    queue_view.py                 # tela Fila (baixando agora + pendentes)
     settings_view.py              # página Configurações
     history_view.py               # página Histórico
 tests/                            # pytest (incl. test_download_opts.py)
@@ -62,11 +63,13 @@ flowchart TB
   app --> settings[SettingsView]
   app --> history[HistoryView]
   app --> downloads[DownloadsView]
-  app --> queue[queue.Queue]
+  app --> queueView[QueueView]
+  app --> eventQ[queue.Queue]
   app --> dl[YoutubeDownloader]
   downloads --> meta[fetch_preview]
   downloads -->|"on_start_download"| app
-  queue -->|"handle_progress_event"| downloads
+  eventQ -->|"handle_progress_event"| downloads
+  eventQ -->|"apply_progress_event"| queueView
   dl --> ytdlp[yt-dlp]
   dl --> ffmpeg[ffmpeg_utils]
   settings --> settFile[settings.json]
@@ -75,8 +78,9 @@ flowchart TB
 
 ### Responsabilidades
 
-- **`app.py`**: janela principal, sidebar + navegação, `_poll_queue` → `_handle_event` (delega à `DownloadsView`), `_run_download_job` (thread + `YoutubeDownloader`), histórico/settings wiring, diálogo Sobre (sidebar), notificação ao `DONE`.
-- **`ui/downloads_view.py`**: URL, preview (debounce + worker), opções locais, pasta, log, barra de progresso, `build_download_job` + callbacks; `force_release_download_ui` se o evento terminal falhar.
+- **`app.py`**: janela principal, sidebar + navegação, `_poll_queue` → `_handle_event` (delega à `DownloadsView` e `QueueView`), `_sync_queue_ui`, `_run_download_job` (thread + `YoutubeDownloader`), histórico/settings wiring, diálogo Sobre (sidebar), notificação ao `DONE`.
+- **`ui/downloads_view.py`**: URL, preview (debounce + worker), opções locais, pasta, log, **+ Fila**, **Baixar** / **Cancelar** no rodapé; `get_now_playing_meta()` para a tela Fila; `force_release_download_ui` se o evento terminal falhar.
+- **`ui/queue_view.py`**: card *Baixando agora* (miniatura, título, barra, Cancelar/Pular) e card *Na fila* (lista, limpar, remover).
 - **`core/`**: lógica testável sem Tk; `build_ytdl_opts(job)` mapeia `DownloadJob` → opções yt-dlp.
 - **`ui/`** (demais views): componentes visuais; callbacks no `__init__` (`on_save`, `on_open_path`, `on_select`).
 
@@ -100,10 +104,11 @@ Nunca atualizar CustomTkinter a partir do worker.
 
 | Área | Status |
 |------|--------|
-| Download vídeo/playlist, qualidade, áudio MP3, merge MP4/WebM | Implementado (`downloader`, `build_ytdl_opts`) |
+| Download vídeo, qualidade, áudio MP3, merge MP4/WebM | Implementado (`downloader`, `build_ytdl_opts`; sempre `noplaylist`) |
+| Playlists → fila (N vídeos) | Implementado (`core/playlist_urls.py`, expand + fila) |
 | Preview título/thumbnail | Implementado (`metadata`) |
 | Sidebar, Configurações, Histórico, Biblioteca | Implementado (`ui/*_view.py`) |
-| Fila de downloads | Implementado (sequencial; lista na UI com remover/limpar — ver [ROADMAP.md](ROADMAP.md)) |
+| Fila de downloads | Implementado (sequencial; tela **Fila** na sidebar — ver [docs/ux-downloads-queue.md](docs/ux-downloads-queue.md)) |
 | Abrir pasta/arquivo, histórico (↻, 📄) | Implementado |
 | Persistência `settings.json` / `history.json` | Implementado |
 | Campos avançados + cookies + tema | Implementado em `DownloadJob` / `AppSettings` / `build_ytdl_opts` |
@@ -112,7 +117,7 @@ Nunca atualizar CustomTkinter a partir do worker.
 | Notificações ao concluir | Implementado (`core/notifications.py`) |
 | Backlog de produto | [ROADMAP.md](ROADMAP.md) — drag-and-drop, MKV, i18n, etc. |
 
-**Regra:** opções avançadas só valem no download após **Salvar** em Configurações (ou já persistidas em `settings.json`). Campos da tela Downloads (pasta, qualidade, áudio, playlist) são gravados ao baixar.
+**Regra:** opções avançadas só valem no download após **Salvar** em Configurações (ou já persistidas em `settings.json`). Campos da tela Downloads (pasta, qualidade, áudio) são gravados ao baixar.
 
 ## Padrões de código (resumo)
 

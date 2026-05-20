@@ -24,7 +24,6 @@ class AppSettings:
     output_dir: str
     quality: str
     audio_only: bool
-    download_playlist: bool
     language: str = "pt-BR"
     video_format: str = "mp4"
     export_profile: str = EXPORT_PROFILE_COMPATIBLE
@@ -41,7 +40,6 @@ class AppSettings:
             output_dir=str(DEFAULT_DOWNLOADS_DIR),
             quality=QUALITY_OPTIONS[0],
             audio_only=False,
-            download_playlist=False,
             language="pt-BR",
             video_format="mp4",
             export_profile=EXPORT_PROFILE_COMPATIBLE,
@@ -129,7 +127,6 @@ def _coerce_settings(data: dict[str, Any]) -> AppSettings:
         output_dir=_resolve_output_dir(str(data.get("output_dir", defaults.output_dir))),
         quality=quality,
         audio_only=bool(data.get("audio_only", defaults.audio_only)),
-        download_playlist=bool(data.get("download_playlist", defaults.download_playlist)),
         language=language,
         video_format=video_format,
         export_profile=export_profile,

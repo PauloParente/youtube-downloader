@@ -34,3 +34,17 @@ def test_clear() -> None:
     q.clear()
     assert len(q) == 0
     assert q.snapshot() == []
+
+
+def test_add_many_dedupes() -> None:
+    q = DownloadQueue()
+    added = q.add_many(
+        [
+            "https://youtu.be/a",
+            "https://youtu.be/b",
+            "https://youtu.be/a",
+            "",
+        ]
+    )
+    assert added == 2
+    assert q.snapshot() == ["https://youtu.be/a", "https://youtu.be/b"]

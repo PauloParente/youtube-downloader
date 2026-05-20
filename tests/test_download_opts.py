@@ -15,7 +15,6 @@ def _job(**overrides) -> DownloadJob:
         output_dir="/tmp/out",
         quality="1080p",
         audio_only=False,
-        download_playlist=False,
     )
     base.update(overrides)
     return DownloadJob(**base)
@@ -26,7 +25,6 @@ def test_build_download_job_merges_preferences() -> None:
         output_dir="/defaults",
         quality="720p",
         audio_only=True,
-        download_playlist=True,
         language="en",
         video_format="webm",
         audio_bitrate="320",
@@ -39,7 +37,6 @@ def test_build_download_job_merges_preferences() -> None:
         output_dir="/dl",
         quality="1080p",
         audio_only=False,
-        download_playlist=False,
         preferences=prefs,
     )
     assert job.output_dir == "/dl"
@@ -118,3 +115,8 @@ def test_build_ytdl_opts_cookies_file(tmp_path) -> None:
 def test_build_ytdl_opts_skips_missing_cookies() -> None:
     opts = build_ytdl_opts(_job(cookies_file="/nope/cookies.txt"), "/usr/bin/ffmpeg")
     assert "cookiefile" not in opts
+
+
+def test_build_ytdl_opts_always_noplaylist() -> None:
+    opts = build_ytdl_opts(_job(), "/usr/bin/ffmpeg")
+    assert opts["noplaylist"] is True

@@ -2,7 +2,6 @@
   "output_dir": "downloads",
   "quality": "Melhor disponível",
   "audio_only": false,
-  "download_playlist": false,
   "language": "pt-BR",
   "video_format": "mp4",
   "export_profile": "compatible",

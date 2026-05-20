@@ -16,7 +16,6 @@ def build_download_job(
     output_dir: str,
     quality: str,
     audio_only: bool,
-    download_playlist: bool,
     preferences: AppSettings,
 ) -> DownloadJob:
     """Merge per-download UI choices with advanced options from settings."""
@@ -25,7 +24,6 @@ def build_download_job(
         output_dir=output_dir,
         quality=quality,
         audio_only=audio_only,
-        download_playlist=download_playlist,
         video_format=preferences.video_format,
         export_profile=preferences.export_profile,
         audio_bitrate=preferences.audio_bitrate,

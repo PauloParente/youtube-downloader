@@ -17,6 +17,14 @@ class DownloadQueue:
         self._urls.append(cleaned)
         return True
 
+    def add_many(self, urls: list[str]) -> int:
+        """Append multiple URLs; skip empty and duplicates. Returns count added."""
+        added = 0
+        for url in urls:
+            if self.add(url):
+                added += 1
+        return added
+
     def remove_at(self, index: int) -> bool:
         """Remove pending item by index (0-based). Returns True if removed."""
         if index < 0 or index >= len(self._urls):

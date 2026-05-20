@@ -53,11 +53,10 @@ def test_save_and_load_roundtrip(tmp_path: Path, monkeypatch) -> None:
         output_dir=str(tmp_path / "dl"),
         quality="720p",
         audio_only=True,
-        download_playlist=True,
         export_profile="max_quality",
     )
     save_settings(original)
     loaded = load_settings()
     assert loaded == original
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["download_playlist"] is True
+    assert "download_playlist" not in data
