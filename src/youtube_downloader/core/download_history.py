@@ -38,9 +38,12 @@ class DownloadHistoryEntry:
     format_ext: str
     size_bytes: int
     is_audio: bool
+    source_url: str = ""
 
     @classmethod
-    def from_filepath(cls, filepath: str, title: str) -> "DownloadHistoryEntry":
+    def from_filepath(
+        cls, filepath: str, title: str, source_url: str = ""
+    ) -> "DownloadHistoryEntry":
         ext = os.path.splitext(filepath)[1].lstrip(".").upper() or "—"
         is_audio = ext in ("MP3", "M4A", "AAC", "OPUS", "OGG", "WAV")
         try:
@@ -54,6 +57,7 @@ class DownloadHistoryEntry:
             format_ext=ext,
             size_bytes=size_bytes,
             is_audio=is_audio,
+            source_url=source_url.strip(),
         )
 
 
@@ -99,6 +103,7 @@ def _coerce_entry(data: dict[str, Any]) -> DownloadHistoryEntry | None:
             format_ext=str(data.get("format_ext", "—")).upper(),
             size_bytes=int(data.get("size_bytes", 0)),
             is_audio=bool(data.get("is_audio", False)),
+            source_url=str(data.get("source_url", "")),
         )
     except (TypeError, ValueError):
         return None
