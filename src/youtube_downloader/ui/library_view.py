@@ -7,6 +7,7 @@ import customtkinter as ctk
 from youtube_downloader.core.library_scan import LibraryFile, scan_library_folder
 from youtube_downloader.ui.theme import (
     CARD_STYLE,
+    ENTRY_STYLE,
     SECONDARY_BTN,
     TEXT_MUTED,
     TEXT_PRIMARY,
@@ -27,9 +28,11 @@ class LibraryView(ctk.CTkFrame):
         self._get_output_dir = get_output_dir
         self._on_open_path = on_open_path
         self._files: list[LibraryFile] = []
+        self._filter_var = ctk.StringVar()
+        self._filter_var.trace_add("write", lambda *_: self._render_rows())
 
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(3, weight=1)
 
         pad = 24
         header = ctk.CTkFrame(self, fg_color="transparent")
@@ -59,6 +62,16 @@ class LibraryView(ctk.CTkFrame):
             **SECONDARY_BTN,
         ).grid(row=0, column=1, rowspan=2, padx=(12, 0))
 
+        search_row = ctk.CTkFrame(self, fg_color="transparent")
+        search_row.grid(row=1, column=0, sticky="ew", padx=pad, pady=(0, 8))
+        search_row.grid_columnconfigure(0, weight=1)
+        ctk.CTkEntry(
+            search_row,
+            textvariable=self._filter_var,
+            placeholder_text="Filtrar arquivos...",
+            **ENTRY_STYLE,
+        ).grid(row=0, column=0, sticky="ew")
+
         self._status_label = ctk.CTkLabel(
             self,
             text="",
@@ -66,30 +79,55 @@ class LibraryView(ctk.CTkFrame):
             text_color=TEXT_MUTED,
             anchor="w",
         )
-        self._status_label.grid(row=1, column=0, sticky="ew", padx=pad, pady=(0, 8))
+        self._status_label.grid(row=2, column=0, sticky="ew", padx=pad, pady=(0, 8))
 
         self._scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self._scroll.grid(row=2, column=0, sticky="nsew", padx=pad, pady=(0, 20))
+        self._scroll.grid(row=3, column=0, sticky="nsew", padx=pad, pady=(0, 20))
         self._scroll.grid_columnconfigure(0, weight=1)
 
     def refresh(self) -> None:
         folder = self._get_output_dir().strip()
         self._files = scan_library_folder(folder)
-        self._status_label.configure(
-            text=f"{len(self._files)} arquivo(s) em {folder}"
-            if self._files
-            else f"Nenhum arquivo de mídia em {folder}"
-        )
+        self._update_status_label(folder)
         self._render_rows()
 
+    def _filtered_files(self) -> list[LibraryFile]:
+        query = self._filter_var.get().strip().casefold()
+        if not query:
+            return self._files
+        return [f for f in self._files if query in f.name.casefold()]
+
+    def _update_status_label(self, folder: str) -> None:
+        visible = self._filtered_files()
+        total = len(self._files)
+        query = self._filter_var.get().strip()
+        if query and total:
+            self._status_label.configure(
+                text=f"{len(visible)} de {total} arquivo(s) em {folder}"
+            )
+        elif total:
+            self._status_label.configure(text=f"{total} arquivo(s) em {folder}")
+        else:
+            self._status_label.configure(
+                text=f"Nenhum arquivo de mídia em {folder}"
+            )
+
     def _render_rows(self) -> None:
+        folder = self._get_output_dir().strip()
+        self._update_status_label(folder)
+
         for child in self._scroll.winfo_children():
             child.destroy()
 
-        if not self._files:
+        visible = self._filtered_files()
+        if not visible:
+            if not self._files:
+                msg = "Nenhum arquivo encontrado. Baixe vídeos na tela Downloads."
+            else:
+                msg = "Nenhum resultado para este filtro."
             ctk.CTkLabel(
                 self._scroll,
-                text="Nenhum arquivo encontrado. Baixe vídeos na tela Downloads.",
+                text=msg,
                 font=ctk.CTkFont(size=13),
                 text_color=TEXT_MUTED,
                 wraplength=520,
@@ -97,7 +135,7 @@ class LibraryView(ctk.CTkFrame):
             ).grid(row=0, column=0, pady=32, padx=8, sticky="w")
             return
 
-        for idx, item in enumerate(self._files):
+        for idx, item in enumerate(visible):
             row = ctk.CTkFrame(self._scroll, **CARD_STYLE)
             row.grid(row=idx, column=0, sticky="ew", pady=4)
             row.grid_columnconfigure(1, weight=1)
