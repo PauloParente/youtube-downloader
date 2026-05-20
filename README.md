@@ -108,10 +108,10 @@ python -m youtube_downloader
 - **Fila de downloads**: adicione várias URLs, veja a lista, remova itens ou limpe a fila; processamento sequencial automático
 - Navegação por **sidebar**: Downloads, Biblioteca, Histórico, Configurações
 - Página **Biblioteca** — lista arquivos de mídia na pasta de destino
-- Página **Histórico** com downloads recentes (abrir pasta/arquivo, baixar de novo; `history.json` local)
+- Página **Histórico** — cards com thumbnail, nome do canal (link para o YouTube) e botão para abrir o vídeo no site (`history.json`); abrir arquivo/pasta, **Baixar de novo**, remover ou **Limpar histórico** (não apaga arquivos no disco)
 - Botões **Abrir pasta** / **Abrir arquivo** após cada download na tela Downloads
 - Página **Configurações** com cards Geral, Qualidade e Formato, Avançado
-- Atalhos: `Ctrl+V` colar URL; `Ctrl+,` ou ícone ⚙ abrir Configurações
+- Atalhos: `Ctrl+V` colar URL; `Ctrl+,` ou **Configurações** na sidebar; **Sobre** no rodapé da sidebar
 - Cancelamento de download em andamento
 - Janela redimensionável (tamanho mínimo ~900×680): na tela **Downloads**, o conteúdo superior rola e os botões **Baixar** / **Cancelar** permanecem fixos no rodapé
 
@@ -126,7 +126,7 @@ Veja o backlog futuro em [ROADMAP.md](ROADMAP.md).
 5. Para baixar todos os vídeos de uma playlist, marque **Baixar playlist inteira**
 6. Clique em **Baixar**
 
-Use **+ Adicionar à fila** para enfileirar links (também durante um download em andamento). A lista mostra a ordem; use **Limpar fila** ou **🗑** por item. Consulte **Histórico** para reabrir ou **baixar de novo** (↻); **Biblioteca** mostra tudo na pasta de destino. A fila não é salva ao fechar o app.
+Use **+ Adicionar à fila** para enfileirar links (também durante um download em andamento). A lista mostra a ordem; use **Limpar fila** ou **🗑** por item. **Histórico** mostra downloads recentes com data e URL para repetir; **Biblioteca** lista todos os arquivos na pasta de destino. A fila não é salva ao fechar o app.
 
 ### Redimensionar a janela
 

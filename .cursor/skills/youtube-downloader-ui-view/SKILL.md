@@ -64,6 +64,7 @@ Padrão: `downloads_view` (`on_start_download`, `on_enqueue_url`, `get_queue_sna
 
 ## Verificação
 
+- [ ] Revisar observabilidade com skill `youtube-downloader-logging` (preview, fila, callbacks complexos)
 - [ ] Smoke: `python main.py` ou `python -m youtube_downloader`
 - [ ] `python -m pytest` se extrair função pura para `core/`
 - [ ] Não crescer `app.py` com centenas de linhas de UI — extrair para `ui/`

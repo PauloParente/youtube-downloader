@@ -31,6 +31,7 @@ Playbook de **revisão** (não implementação). Referências: [AGENTS.md](../..
 | Escopo | Diff mínimo; sem refactor massivo, `ruff`/`mypy` não pedidos |
 | Segredos / local | Sem `settings.json`, `history.json`, cookies, `dist/`, `logs/` no commit |
 | Docs | README só se UX ou instalação mudou |
+| Observabilidade | Falhas novas com `logger` onde há `except` ou I/O; sem spam; sem segredos (skill `youtube-downloader-logging`) |
 | Afirmações | Não aceitar "já funciona no download" sem rastrear até `build_ytdl_opts` |
 
 Rodar mentalmente: `python -m pytest` deve ser exigido antes do merge.

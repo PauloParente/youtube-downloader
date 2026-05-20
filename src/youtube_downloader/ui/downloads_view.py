@@ -76,7 +76,7 @@ class DownloadsView(ctk.CTkFrame):
         on_start_download: Callable[[DownloadJob], None],
         on_cancel_download: Callable[[], None],
         on_persist_settings: Callable[[], None],
-        on_add_history: Callable[[str, Optional[str], str], None],
+        on_add_history: Callable[..., None],
         on_get_app_settings: Callable[[], AppSettings],
         on_enqueue_url: Callable[[str], bool],
         get_queue_snapshot: Callable[[], list[str]],
@@ -104,6 +104,7 @@ class DownloadsView(ctk.CTkFrame):
         self._output_dir = tk.StringVar(value=initial_output_dir)
         self._preview_after_id: Optional[str] = None
         self._preview_request_id = 0
+        self._current_preview: Optional[VideoPreview] = None
         self._ctk_preview_image: Optional[ctk.CTkImage] = None
         self._preview_pil_light: Optional[Image.Image] = None
         self._preview_pil_dark: Optional[Image.Image] = None
@@ -158,6 +159,13 @@ class DownloadsView(ctk.CTkFrame):
         self._url_entry.insert(0, url)
         self._url_entry.focus_set()
         self._schedule_preview()
+
+    def show_status_hint(self, text: str, *, reset_after_ms: int = 5000) -> None:
+        """Temporary status message (e.g. after pasting URL from history)."""
+        if self._is_downloading:
+            return
+        self._set_download_status(text)
+        self._schedule_status_reset(reset_after_ms)
 
     def start_download_for_url(self, url: str) -> None:
         if self._is_downloading:
@@ -843,6 +851,7 @@ class DownloadsView(ctk.CTkFrame):
 
     def _clear_preview(self) -> None:
         self._preview_request_id += 1
+        self._current_preview = None
         clear_preview_cache()
         self._detach_thumb_image()
         self._configure_thumb(None, "")
@@ -890,6 +899,7 @@ class DownloadsView(ctk.CTkFrame):
             self._preview_subtitle_label.configure(text=preview.error[:120])
             return
 
+        self._current_preview = preview
         self._show_preview_panel(True)
         self._preview_title_label.configure(text=preview.title)
 
@@ -1083,10 +1093,27 @@ class DownloadsView(ctk.CTkFrame):
         self._status_reset_after_id = self.after(delay_ms, self._reset_download_status)
 
     def _get_preview_title_for_log(self) -> Optional[str]:
+        if self._current_preview and self._current_preview.title:
+            return self._current_preview.title.strip()
         title = self._preview_title_label.cget("text").strip()
-        if not title or title in ("Carregando preview…", "—"):
+        if not title or title in ("Carregando preview…", "—", "Preview indisponível"):
             return None
         return title
+
+    def _get_preview_channel_name(self) -> str:
+        if self._current_preview and self._current_preview.uploader:
+            return self._current_preview.uploader.strip()
+        return ""
+
+    def _get_preview_channel_url(self) -> str:
+        if self._current_preview and self._current_preview.channel_url:
+            return self._current_preview.channel_url.strip()
+        return ""
+
+    def _get_preview_thumbnail_bytes(self) -> Optional[bytes]:
+        if self._current_preview and self._current_preview.thumbnail_bytes:
+            return self._current_preview.thumbnail_bytes
+        return None
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
@@ -1264,6 +1291,9 @@ class DownloadsView(ctk.CTkFrame):
                                 event.filepath,
                                 self._get_preview_title_for_log(),
                                 self._url_entry.get().strip(),
+                                channel_name=self._get_preview_channel_name(),
+                                channel_url=self._get_preview_channel_url(),
+                                thumbnail_bytes=self._get_preview_thumbnail_bytes(),
                             )
                         except Exception:
                             logger.exception("Falha ao registrar download no historico")

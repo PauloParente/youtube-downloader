@@ -1,17 +1,21 @@
 """Persist and format download history entries."""
 
+import hashlib
+import io
 import json
 import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from youtube_downloader.config import PROJECT_ROOT
-from youtube_downloader.core.logging_config import get_logger
+from youtube_downloader.core.logging_config import LOG_CACHE_DIR, get_logger
 
 logger = get_logger("history")
 
 HISTORY_FILE = PROJECT_ROOT / "history.json"
+HISTORY_THUMB_DIR = LOG_CACHE_DIR / "history"
 _MAX_ENTRIES = 100
 
 _MONTHS_PT = (
@@ -39,10 +43,20 @@ class DownloadHistoryEntry:
     size_bytes: int
     is_audio: bool
     source_url: str = ""
+    channel_name: str = ""
+    channel_url: str = ""
+    thumbnail_path: str = ""
 
     @classmethod
     def from_filepath(
-        cls, filepath: str, title: str, source_url: str = ""
+        cls,
+        filepath: str,
+        title: str,
+        source_url: str = "",
+        *,
+        channel_name: str = "",
+        channel_url: str = "",
+        thumbnail_path: str = "",
     ) -> "DownloadHistoryEntry":
         ext = os.path.splitext(filepath)[1].lstrip(".").upper() or "—"
         is_audio = ext in ("MP3", "M4A", "AAC", "OPUS", "OGG", "WAV")
@@ -58,7 +72,54 @@ class DownloadHistoryEntry:
             size_bytes=size_bytes,
             is_audio=is_audio,
             source_url=source_url.strip(),
+            channel_name=channel_name.strip(),
+            channel_url=channel_url.strip(),
+            thumbnail_path=thumbnail_path.strip(),
         )
+
+
+def history_thumbnail_path_for_url(source_url: str) -> Path:
+    """Stable cache path for a video URL thumbnail."""
+    key = hashlib.sha256(source_url.strip().encode("utf-8")).hexdigest()[:16]
+    return HISTORY_THUMB_DIR / f"{key}.jpg"
+
+
+def save_history_thumbnail(source_url: str, thumbnail_bytes: bytes) -> str:
+    """Write thumbnail JPEG to cache; returns path string or empty on failure."""
+    cleaned = source_url.strip()
+    if not cleaned or not thumbnail_bytes:
+        return ""
+    try:
+        from PIL import Image
+
+        HISTORY_THUMB_DIR.mkdir(parents=True, exist_ok=True)
+        path = history_thumbnail_path_for_url(cleaned)
+        img = Image.open(io.BytesIO(thumbnail_bytes)).convert("RGB")
+        img.save(path, "JPEG", quality=85)
+        return str(path)
+    except Exception:
+        logger.exception("Falha ao salvar thumbnail do historico")
+        return ""
+
+
+def delete_history_thumbnail(path: str) -> None:
+    cleaned = path.strip()
+    if not cleaned:
+        return
+    try:
+        Path(cleaned).unlink(missing_ok=True)
+    except OSError:
+        logger.warning("Falha ao remover thumbnail do historico: %s", cleaned)
+
+
+def clear_history_thumbnails() -> None:
+    if not HISTORY_THUMB_DIR.is_dir():
+        return
+    for path in HISTORY_THUMB_DIR.glob("*.jpg"):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def format_file_size(size_bytes: int) -> str:
@@ -104,6 +165,9 @@ def _coerce_entry(data: dict[str, Any]) -> DownloadHistoryEntry | None:
             size_bytes=int(data.get("size_bytes", 0)),
             is_audio=bool(data.get("is_audio", False)),
             source_url=str(data.get("source_url", "")),
+            channel_name=str(data.get("channel_name", "")),
+            channel_url=str(data.get("channel_url", "")),
+            thumbnail_path=str(data.get("thumbnail_path", "")),
         )
     except (TypeError, ValueError):
         return None
@@ -153,6 +217,69 @@ def remove_history_entry(filepath: str) -> list[DownloadHistoryEntry]:
     cleaned = filepath.strip()
     if not cleaned:
         return load_history()
-    entries = [e for e in load_history() if e.filepath != cleaned]
+    entries = load_history()
+    removed = [e for e in entries if e.filepath == cleaned]
+    for entry in removed:
+        delete_history_thumbnail(entry.thumbnail_path)
+    entries = [e for e in entries if e.filepath != cleaned]
     save_history(entries)
     return entries
+
+
+def clear_history() -> list[DownloadHistoryEntry]:
+    """Remove all entries from history.json."""
+    clear_history_thumbnails()
+    save_history([])
+    return []
+
+
+def refresh_entries_from_disk(
+    entries: list[DownloadHistoryEntry],
+) -> list[DownloadHistoryEntry]:
+    """Re-read file size/format from disk; preserve completed_at and title."""
+    refreshed: list[DownloadHistoryEntry] = []
+    for entry in entries:
+        if os.path.isfile(entry.filepath):
+            updated = DownloadHistoryEntry.from_filepath(
+                entry.filepath,
+                entry.title,
+                entry.source_url,
+                channel_name=entry.channel_name,
+                channel_url=entry.channel_url,
+                thumbnail_path=entry.thumbnail_path,
+            )
+            refreshed.append(
+                DownloadHistoryEntry(
+                    title=entry.title,
+                    filepath=updated.filepath,
+                    completed_at=entry.completed_at,
+                    format_ext=updated.format_ext,
+                    size_bytes=updated.size_bytes,
+                    is_audio=updated.is_audio,
+                    source_url=entry.source_url,
+                    channel_name=entry.channel_name,
+                    channel_url=entry.channel_url,
+                    thumbnail_path=entry.thumbnail_path,
+                )
+            )
+        else:
+            refreshed.append(
+                DownloadHistoryEntry(
+                    title=entry.title,
+                    filepath=entry.filepath,
+                    completed_at=entry.completed_at,
+                    format_ext=entry.format_ext,
+                    size_bytes=0,
+                    is_audio=entry.is_audio,
+                    source_url=entry.source_url,
+                    channel_name=entry.channel_name,
+                    channel_url=entry.channel_url,
+                    thumbnail_path=entry.thumbnail_path,
+                )
+            )
+    return refreshed
+
+
+def entry_disk_signature(entry: DownloadHistoryEntry) -> tuple[str, int, str, bool]:
+    """Comparable fields that change when a file is moved or updated on disk."""
+    return (entry.filepath, entry.size_bytes, entry.format_ext, entry.is_audio)

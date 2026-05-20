@@ -57,6 +57,21 @@ GHOST_BTN = {
     "height": 28,
     "width": 36,
 }
+LINK_BTN = {
+    "fg_color": "transparent",
+    "hover_color": BTN_SECONDARY,
+    "text_color": ACCENT,
+    "height": 24,
+    "corner_radius": 4,
+}
+YOUTUBE_BTN = {
+    "fg_color": "#CC0000",
+    "hover_color": "#FF0000",
+    "text_color": "#FFFFFF",
+    "corner_radius": 6,
+    "width": 36,
+    "height": 32,
+}
 MENU_BTN = {
     "fg_color": "transparent",
     "hover_color": BTN_SECONDARY,

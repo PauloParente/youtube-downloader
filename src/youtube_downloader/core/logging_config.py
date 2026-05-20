@@ -86,3 +86,20 @@ def install_exception_hooks() -> None:
         )
 
     threading.excepthook = handle_thread_exception
+
+
+def install_ui_exception_logging(root: object) -> None:
+    """Log Tk/CustomTkinter callback exceptions to app.log and errors.log.
+
+    Without this, errors in button/command handlers only appear on stderr
+    (e.g. "Exception in Tkinter callback") and are easy to miss when debugging.
+    """
+    logger = get_logger("ui.callback")
+
+    def report_callback_exception(exc, val, tb) -> None:
+        logger.critical(
+            "Exceção em callback da interface",
+            exc_info=(exc, val, tb),
+        )
+
+    setattr(root, "report_callback_exception", report_callback_exception)

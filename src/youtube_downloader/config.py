@@ -56,6 +56,11 @@ AUDIO_POSTPROCESSORS = [
 
 APP_TITLE = "YouTube Downloader"
 APP_VERSION = "1.2.0"
+APP_DESCRIPTION = (
+    "Baixe vídeos e playlists do YouTube com fila, preview, histórico e biblioteca local."
+)
+GITHUB_REPO_URL = "https://github.com/PauloParente/youtube-downloader"
+COPYRIGHT_LINE = "© 2026 Paulo Parente — Licença MIT"
 WINDOW_SIZE = "980x720"
 WINDOW_MIN_WIDTH = 900
 WINDOW_MIN_HEIGHT = 680

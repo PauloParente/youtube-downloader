@@ -13,7 +13,6 @@ import customtkinter as ctk
 
 from youtube_downloader.config import (
     APP_TITLE,
-    APP_VERSION,
     DEFAULT_DOWNLOADS_DIR,
     WINDOW_MIN_HEIGHT,
     WINDOW_MIN_WIDTH,
@@ -21,14 +20,9 @@ from youtube_downloader.config import (
 )
 from youtube_downloader.ui.nav_sidebar import NavSidebar
 from youtube_downloader.ui.theme import (
-    ACCENT,
     APP_BG,
-    BTN_SECONDARY,
     CARD_BORDER,
     CARD_STYLE,
-    FONT_TITLE,
-    GHOST_BTN,
-    ICON_BTN,
     PRIMARY_BTN,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
@@ -36,8 +30,13 @@ from youtube_downloader.ui.theme import (
 from youtube_downloader.core.download_history import (
     DownloadHistoryEntry,
     add_history_entry,
+    clear_history,
+    entry_disk_signature,
     load_history,
+    refresh_entries_from_disk,
     remove_history_entry,
+    save_history,
+    save_history_thumbnail,
 )
 from youtube_downloader.core.download_queue import DownloadQueue
 from youtube_downloader.core.downloader import YoutubeDownloader
@@ -46,10 +45,12 @@ from youtube_downloader.core.logging_config import (
     LOG_CACHE_DIR,
     LOG_DIR,
     get_logger,
+    install_ui_exception_logging,
 )
 from youtube_downloader.core.models import DownloadJob, EventType, ProgressEvent
 from youtube_downloader.core.notifications import notify_download_complete
 from youtube_downloader.core.settings import AppSettings, load_settings, save_settings
+from youtube_downloader.ui.about_dialog import show_about_dialog
 from youtube_downloader.ui.downloads_view import DownloadsView
 from youtube_downloader.ui.history_view import HistoryView
 from youtube_downloader.ui.library_view import LibraryView
@@ -57,12 +58,11 @@ from youtube_downloader.ui.settings_view import SettingsView
 
 logger = get_logger("app")
 
-SECTION_PADX = 24
-
 
 class YoutubeDownloaderApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
+        install_ui_exception_logging(self)
 
         self._settings = load_settings()
         ctk.set_appearance_mode(self._settings.appearance_mode)
@@ -99,36 +99,6 @@ class YoutubeDownloaderApp(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(50, self._poll_queue)
 
-    def _build_top_bar(self) -> None:
-        top = ctk.CTkFrame(self, fg_color=APP_BG, corner_radius=0, height=52)
-        top.grid(row=0, column=0, sticky="ew")
-        top.grid_columnconfigure(2, weight=1)
-        top.grid_propagate(False)
-
-        inner = ctk.CTkFrame(top, fg_color="transparent")
-        inner.pack(fill="both", expand=True, padx=SECTION_PADX, pady=10)
-        inner.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(
-            inner,
-            text=APP_TITLE,
-            font=ctk.CTkFont(family=FONT_TITLE[0], size=FONT_TITLE[1], weight="bold"),
-            text_color=TEXT_PRIMARY,
-        ).grid(row=0, column=0, sticky="w")
-
-        actions = ctk.CTkFrame(inner, fg_color="transparent")
-        actions.grid(row=0, column=2, sticky="e")
-        ctk.CTkButton(
-            actions, text="⚙", command=self._open_settings, **ICON_BTN
-        ).grid(row=0, column=0, padx=4)
-        ctk.CTkButton(actions, text="?", command=self._show_about, **ICON_BTN).grid(
-            row=0, column=1, padx=4
-        )
-
-        ctk.CTkFrame(self, height=1, fg_color=CARD_BORDER, corner_radius=0).grid(
-            row=1, column=0, sticky="ew"
-        )
-
     def _on_nav_select(self, view_id: str) -> None:
         self._switch_view(view_id)
 
@@ -138,8 +108,10 @@ class YoutubeDownloaderApp(ctk.CTk):
                 frame.grid(row=0, column=0, sticky="nsew")
             else:
                 frame.grid_remove()
-        if view_id == "history" and self._history_view is not None:
-            self._history_view.set_entries(self._history_entries)
+        if view_id == "history":
+            self._refresh_history_from_disk()
+            if self._history_view is not None:
+                self._history_view.set_entries(self._history_entries)
         if view_id == "library" and self._library_view is not None:
             self._library_view.refresh()
 
@@ -148,11 +120,25 @@ class YoutubeDownloaderApp(ctk.CTk):
         filepath: str,
         title: Optional[str] = None,
         source_url: str = "",
+        *,
+        channel_name: str = "",
+        channel_url: str = "",
+        thumbnail_bytes: Optional[bytes] = None,
     ) -> None:
         if not os.path.isfile(filepath):
             return
         label = (title or "").strip() or os.path.basename(filepath)
-        entry = DownloadHistoryEntry.from_filepath(filepath, label, source_url)
+        thumb_path = ""
+        if thumbnail_bytes and source_url.strip():
+            thumb_path = save_history_thumbnail(source_url, thumbnail_bytes)
+        entry = DownloadHistoryEntry.from_filepath(
+            filepath,
+            label,
+            source_url,
+            channel_name=channel_name,
+            channel_url=channel_url,
+            thumbnail_path=thumb_path,
+        )
         self._history_entries = add_history_entry(entry)
         if self._history_view is not None:
             self._history_view.set_entries(self._history_entries)
@@ -178,11 +164,25 @@ class YoutubeDownloaderApp(ctk.CTk):
             self._sidebar.set_active("download")
         if self._downloads_view is not None:
             self._downloads_view.set_url_and_focus(cleaned)
+            self._downloads_view.show_status_hint(
+                "URL do histórico colada. Clique em Baixar para iniciar."
+            )
 
-    def _remove_history_entry(self, filepath: str) -> None:
+    def _refresh_history_from_disk(self) -> None:
+        refreshed = refresh_entries_from_disk(self._history_entries)
+        old_sig = [entry_disk_signature(e) for e in self._history_entries]
+        new_sig = [entry_disk_signature(e) for e in refreshed]
+        if old_sig != new_sig:
+            self._history_entries = refreshed
+            save_history(refreshed)
+
+    def _clear_history(self) -> list[DownloadHistoryEntry]:
+        self._history_entries = clear_history()
+        return self._history_entries
+
+    def _remove_history_entry(self, filepath: str) -> list[DownloadHistoryEntry]:
         self._history_entries = remove_history_entry(filepath)
-        if self._history_view is not None:
-            self._history_view.set_entries(self._history_entries)
+        return self._history_entries
 
     def _enqueue_download_url(self, url: str) -> bool:
         added = self._download_queue.add(url)
@@ -220,15 +220,18 @@ class YoutubeDownloaderApp(ctk.CTk):
 
     def _build_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
-        self._build_top_bar()
+        self.grid_rowconfigure(0, weight=1)
 
         body = ctk.CTkFrame(self, fg_color="transparent")
-        body.grid(row=2, column=0, sticky="nsew")
+        body.grid(row=0, column=0, sticky="nsew")
         body.grid_columnconfigure(2, weight=1)
         body.grid_rowconfigure(0, weight=1)
 
-        self._sidebar = NavSidebar(body, on_select=self._on_nav_select)
+        self._sidebar = NavSidebar(
+            body,
+            on_select=self._on_nav_select,
+            on_about=self._show_about,
+        )
         self._sidebar.grid(row=0, column=0, sticky="ns")
 
         ctk.CTkFrame(body, width=1, fg_color=CARD_BORDER, corner_radius=0).grid(
@@ -274,6 +277,7 @@ class YoutubeDownloaderApp(ctk.CTk):
             on_open_file=self._open_history_file,
             on_redownload=self._redownload_from_history,
             on_remove=self._remove_history_entry,
+            on_clear_history=self._clear_history,
         )
         self._view_frames["history"] = self._history_view
         self._history_view.set_entries(self._history_entries)
@@ -366,128 +370,17 @@ class YoutubeDownloaderApp(ctk.CTk):
         self.destroy()
 
     def _show_about(self) -> None:
-        if self._about_window is not None:
-            try:
-                if self._about_window.winfo_exists():
-                    self._about_window.lift()
-                    self._about_window.focus()
-                    return
-            except tk.TclError:
-                self._about_window = None
-
-        import yt_dlp
-
-        from youtube_downloader.core.ffmpeg_utils import find_ffmpeg_dir
-
-        ffmpeg_path = find_ffmpeg_dir() or "não encontrado"
-        dialog = ctk.CTkToplevel(self)
-        dialog.title("Sobre")
-        dialog.geometry("440x280")
-        dialog.resizable(False, False)
-        dialog.transient(self)
-        dialog.grab_set()
-        dialog.configure(fg_color=APP_BG)
+        try:
+            dialog = show_about_dialog(
+                self,
+                on_open_logs=self._open_logs,
+                existing=self._about_window,
+            )
+        except Exception:
+            logger.exception("Falha ao abrir diálogo Sobre")
+            return
         self._about_window = dialog
         dialog.bind("<Destroy>", lambda _e: setattr(self, "_about_window", None))
-
-        accent_bar = ctk.CTkFrame(dialog, height=3, fg_color=ACCENT, corner_radius=0)
-        accent_bar.pack(fill="x")
-
-        top = ctk.CTkFrame(dialog, fg_color="transparent")
-        top.pack(fill="x", padx=20, pady=(16, 8))
-        top.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(
-            top,
-            text="Sobre",
-            font=ctk.CTkFont(size=15, weight="bold"),
-            text_color=TEXT_PRIMARY,
-            anchor="w",
-        ).grid(row=0, column=0, sticky="w")
-        ctk.CTkButton(
-            top,
-            text="✕",
-            width=28,
-            height=28,
-            command=dialog.destroy,
-            **GHOST_BTN,
-        ).grid(row=0, column=1)
-
-        body = ctk.CTkFrame(dialog, fg_color="transparent")
-        body.pack(fill="x", padx=20)
-        ctk.CTkLabel(
-            body,
-            text=f"{APP_TITLE} v{APP_VERSION}",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=ACCENT,
-            anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            body,
-            text=f"yt-dlp: {yt_dlp.version.__version__}",
-            font=ctk.CTkFont(size=12),
-            text_color=TEXT_SECONDARY,
-            anchor="w",
-        ).pack(anchor="w", pady=(8, 2))
-        ctk.CTkLabel(
-            body,
-            text=f"FFmpeg: {ffmpeg_path}",
-            font=ctk.CTkFont(size=12),
-            text_color=TEXT_SECONDARY,
-            anchor="w",
-        ).pack(anchor="w")
-
-        ctk.CTkFrame(body, height=1, fg_color=CARD_STYLE["border_color"]).pack(
-            fill="x", pady=(14, 10)
-        )
-
-        shortcuts = ctk.CTkFrame(dialog, fg_color="transparent")
-        shortcuts.pack(fill="x", padx=20)
-        ctk.CTkLabel(
-            shortcuts,
-            text="Atalhos:",
-            font=ctk.CTkFont(size=12),
-            text_color=TEXT_SECONDARY,
-            anchor="w",
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
-
-        def _pill(parent: ctk.CTkFrame, key: str, desc: str, col: int) -> None:
-            ctk.CTkLabel(
-                parent,
-                text=key,
-                font=ctk.CTkFont(size=11, weight="bold"),
-                text_color=TEXT_PRIMARY,
-                fg_color=BTN_SECONDARY,
-                corner_radius=4,
-                width=52,
-                height=24,
-            ).grid(row=1, column=col * 2, padx=(0, 6))
-            ctk.CTkLabel(
-                parent,
-                text=desc,
-                font=ctk.CTkFont(size=12),
-                text_color=TEXT_SECONDARY,
-                anchor="w",
-            ).grid(row=1, column=col * 2 + 1, padx=(0, 16), sticky="w")
-
-        _pill(shortcuts, "Ctrl+V", "colar URL", 0)
-        _pill(shortcuts, "Ctrl+,", "preferências", 1)
-
-        btn_row = ctk.CTkFrame(dialog, fg_color="transparent")
-        btn_row.pack(pady=(16, 20))
-        ctk.CTkButton(
-            btn_row,
-            text="Ver logs",
-            width=100,
-            command=self._open_logs,
-            **SECONDARY_BTN,
-        ).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(
-            btn_row,
-            text="OK",
-            width=100,
-            command=dialog.destroy,
-            **PRIMARY_BTN,
-        ).pack(side="left")
 
     def _open_path_in_explorer(self, path: str) -> None:
         try:

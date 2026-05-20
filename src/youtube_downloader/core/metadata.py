@@ -27,7 +27,20 @@ class VideoPreview:
     playlist_title: Optional[str] = None
     duration_seconds: Optional[int] = None
     uploader: Optional[str] = None
+    channel_url: Optional[str] = None
     error: Optional[str] = None
+
+
+def extract_channel_url(info: dict[str, Any]) -> str:
+    """Best-effort channel page URL from yt-dlp extract_info dict."""
+    for key in ("channel_url", "uploader_url"):
+        value = info.get(key)
+        if isinstance(value, str) and value.strip().startswith("http"):
+            return value.strip()
+    channel_id = info.get("channel_id")
+    if channel_id:
+        return f"https://www.youtube.com/channel/{channel_id}"
+    return ""
 
 
 def format_duration(seconds: Optional[int]) -> Optional[str]:
@@ -164,6 +177,7 @@ def fetch_preview(url: str) -> VideoPreview:
                 playlist_title=playlist_title,
                 duration_seconds=duration,
                 uploader=video_info.get("uploader") or video_info.get("channel"),
+                channel_url=extract_channel_url(video_info) or None,
             )
     except Exception as exc:
         logger.exception("fetch_preview falhou: %s", url)

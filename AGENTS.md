@@ -75,7 +75,7 @@ flowchart TB
 
 ### Responsabilidades
 
-- **`app.py`**: janela principal, top bar, navegação, `_poll_queue` → `_handle_event` (delega à `DownloadsView`), `_run_download_job` (thread + `YoutubeDownloader`), histórico/settings wiring, About, notificação ao `DONE`.
+- **`app.py`**: janela principal, sidebar + navegação, `_poll_queue` → `_handle_event` (delega à `DownloadsView`), `_run_download_job` (thread + `YoutubeDownloader`), histórico/settings wiring, diálogo Sobre (sidebar), notificação ao `DONE`.
 - **`ui/downloads_view.py`**: URL, preview (debounce + worker), opções locais, pasta, log, barra de progresso, `build_download_job` + callbacks; `force_release_download_ui` se o evento terminal falhar.
 - **`core/`**: lógica testável sem Tk; `build_ytdl_opts(job)` mapeia `DownloadJob` → opções yt-dlp.
 - **`ui/`** (demais views): componentes visuais; callbacks no `__init__` (`on_save`, `on_open_path`, `on_select`).
@@ -125,6 +125,15 @@ Nunca atualizar CustomTkinter a partir do worker.
 
 Detalhes: regras em [`.cursor/rules/`](.cursor/rules/) e [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Depuração de bugs (agentes)
+
+Ao investigar ou corrigir um bug reportado pelo usuário:
+
+1. Ler **`logs/errors.log`** (últimas linhas) e, se necessário, **`logs/app.log`** na raiz do projeto (dev) ou ao lado do `.exe` (dist).
+2. Erros em botões/comandos Tk costumam aparecer como `Exceção em callback da interface` (`youtube_downloader.ui.callback`) — hook em `install_ui_exception_logging` após criar a janela.
+3. Exceções na thread principal ou em workers de download: `youtube_downloader.unhandled` (hooks em `install_exception_hooks`).
+4. Reproduzir o fluxo na UI se o log não for conclusivo; não assumir causa só pelo sintoma visual.
+
 ## Skills Cursor (playbooks)
 
 Procedimentos em [`.cursor/skills/`](.cursor/skills/) — invoque pelo nome ou quando a tarefa combinar com a descrição.
@@ -133,11 +142,13 @@ Procedimentos em [`.cursor/skills/`](.cursor/skills/) — invoque pelo nome ou q
 |-------|-------------|
 | `youtube-downloader-feature` | Opção → `AppSettings` → `DownloadJob` → `build_ytdl_opts` |
 | `youtube-downloader-ui-view` | Telas em `ui/`, wiring em `app.py`, threading — ver [docs/ux-downloads-queue.md](docs/ux-downloads-queue.md) |
+| `youtube-downloader-logging` | Ao implementar feature — checklist de onde logar |
+| `youtube-downloader-bugfix` | Investigar/corrigir bug — começar por `logs/errors.log` |
 | `youtube-downloader-release` | Versão, `build.ps1`, zip, FFmpeg em `dist/` |
 | `youtube-downloader-code-review` | Revisar diff antes do merge (read-only primeiro) |
 | `youtube-downloader-refactor-extract` | Extrair de `app.py` sem big-bang |
 
-Fluxo sugerido: implementar → `pytest` → `youtube-downloader-code-review` → corrigir → PR.
+Fluxo sugerido: implementar → `youtube-downloader-logging` (checklist) → `pytest` → `youtube-downloader-code-review` → corrigir → PR. Para bugs: `youtube-downloader-bugfix` → `pytest` → PR.
 
 ## Backlog de refatoração
 

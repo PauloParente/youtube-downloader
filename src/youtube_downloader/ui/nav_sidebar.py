@@ -19,7 +19,7 @@ from youtube_downloader.ui.theme import (
 
 
 class NavSidebar(ctk.CTkFrame):
-    """Sidebar com marca, navegação e rodapé de usuário."""
+    """Sidebar com marca, navegação e ação Sobre no rodapé."""
 
     ITEMS = (
         ("download", "⬇", "Downloads"),
@@ -32,6 +32,7 @@ class NavSidebar(ctk.CTkFrame):
         self,
         master: ctk.CTkBaseClass,
         on_select: Callable[[str], None],
+        on_about: Callable[[], None],
         **kwargs,
     ) -> None:
         super().__init__(
@@ -43,6 +44,7 @@ class NavSidebar(ctk.CTkFrame):
         )
         self.grid_propagate(False)
         self._on_select = on_select
+        self._on_about = on_about
         self._active_id = "download"
         self._item_frames: dict[str, ctk.CTkFrame] = {}
         self._item_buttons: dict[str, ctk.CTkButton] = {}
@@ -102,32 +104,13 @@ class NavSidebar(ctk.CTkFrame):
 
         ctk.CTkFrame(footer, height=1, fg_color=CARD_BORDER).pack(fill="x", pady=(0, 12))
 
-        user_row = ctk.CTkFrame(footer, fg_color="transparent")
-        user_row.pack(fill="x")
-        ctk.CTkLabel(
-            user_row,
-            text="👤",
-            width=32,
-            height=32,
-            fg_color=SIDEBAR_ACTIVE_BG,
-            corner_radius=16,
-        ).pack(side="left", padx=(0, 8))
-        user_text = ctk.CTkFrame(user_row, fg_color="transparent")
-        user_text.pack(side="left", fill="x", expand=True)
-        ctk.CTkLabel(
-            user_text,
-            text="Usuário",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color=TEXT_PRIMARY,
-            anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            user_text,
-            text="Licença local",
-            font=ctk.CTkFont(size=10),
-            text_color=TEXT_MUTED,
-            anchor="w",
-        ).pack(anchor="w")
+        ctk.CTkButton(
+            footer,
+            text="ℹ   Sobre",
+            command=self._on_about,
+            font=ctk.CTkFont(size=13),
+            **NAV_BTN,
+        ).pack(fill="x", pady=4)
 
         self.set_active("download")
 

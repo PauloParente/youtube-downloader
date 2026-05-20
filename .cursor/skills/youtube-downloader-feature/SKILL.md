@@ -38,6 +38,7 @@ DownloadJob → build_ytdl_opts → YoutubeDownloader.download
 
 ## Antes de concluir
 
+- [ ] Revisar observabilidade com skill `youtube-downloader-logging` (falhas em `build_download_job`, `build_ytdl_opts`, persistência)
 - [ ] `python -m pytest` (ver [pytest.ini](../../../pytest.ini), `pythonpath = src`)
 - [ ] README só se UX visível ou instalação mudou
 
