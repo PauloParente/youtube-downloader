@@ -57,6 +57,7 @@ from youtube_downloader.ui.queue_view import QueueView
 from youtube_downloader.ui.history_view import HistoryView
 from youtube_downloader.ui.library_view import LibraryView
 from youtube_downloader.ui.settings_view import SettingsView
+from youtube_downloader.ui.splash_screen import SplashScreen, center_window_on_screen, parse_window_size
 
 logger = get_logger("app")
 
@@ -69,40 +70,75 @@ class YoutubeDownloaderApp(ctk.CTk):
         self._settings = load_settings()
         ctk.set_appearance_mode(self._settings.appearance_mode)
         ctk.set_default_color_theme("blue")
-
-        self.title(APP_TITLE)
-        self.geometry(WINDOW_SIZE)
-        self.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
         self.configure(fg_color=APP_BG)
+        self.withdraw()
 
-        self._view_frames: dict[str, ctk.CTkFrame] = {}
-        self._sidebar: Optional[NavSidebar] = None
-        self._history_entries: list[DownloadHistoryEntry] = load_history()
-        self._history_view: Optional[HistoryView] = None
-        self._library_view: Optional[LibraryView] = None
+        self._splash = SplashScreen(self)
+        self._splash.show_window()
+        self.protocol("WM_DELETE_WINDOW", self._on_close_during_startup)
+        self.update_idletasks()
+        self.update()
+        self.after(1, self._complete_startup)
 
-        self._downloader = YoutubeDownloader()
-        self._event_queue: queue.Queue[ProgressEvent] = queue.Queue()
-        self._download_queue = DownloadQueue()
-        self._preview_cache = PreviewCache()
-        self._preview_cache.on_updated(self._on_preview_cache_updated)
-        self._downloads_view: Optional[DownloadsView] = None
-        self._queue_view: Optional[QueueView] = None
-        self._download_thread: Optional[threading.Thread] = None
-        self._active_download_job: Optional[DownloadJob] = None
-        self._settings_view: Optional[SettingsView] = None
-        self._about_window: Optional[ctk.CTkToplevel] = None
-        self._ffmpeg_status_after_id: Optional[str] = None
+    def _on_close_during_startup(self) -> None:
+        """Allow closing while splash is visible (main UI not built yet)."""
+        if getattr(self, "_splash", None) is not None:
+            self._splash.destroy()
+            self._splash = None
+        self.destroy()
 
-        self._ensure_downloads_dir()
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        LOG_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        self._build_ui()
-        self._bind_shortcuts()
-        self._apply_settings(self._settings)
-        self._check_ffmpeg()
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.after(50, self._poll_queue)
+    def _complete_startup(self) -> None:
+        try:
+            self._shell_body: Optional[ctk.CTkFrame] = None
+            self._view_frames: dict[str, ctk.CTkFrame] = {}
+            self._sidebar: Optional[NavSidebar] = None
+            self._history_entries: list[DownloadHistoryEntry] = load_history()
+            self._history_view: Optional[HistoryView] = None
+            self._library_view: Optional[LibraryView] = None
+
+            self._downloader = YoutubeDownloader()
+            self._event_queue: queue.Queue[ProgressEvent] = queue.Queue()
+            self._download_queue = DownloadQueue()
+            self._preview_cache = PreviewCache()
+            self._preview_cache.on_updated(self._on_preview_cache_updated)
+            self._downloads_view: Optional[DownloadsView] = None
+            self._queue_view: Optional[QueueView] = None
+            self._download_thread: Optional[threading.Thread] = None
+            self._active_download_job: Optional[DownloadJob] = None
+            self._settings_view: Optional[SettingsView] = None
+            self._about_window: Optional[ctk.CTkToplevel] = None
+            self._ffmpeg_status_after_id: Optional[str] = None
+
+            self._ensure_downloads_dir()
+            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            LOG_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            self._build_ui()
+            self._bind_shortcuts()
+            self._apply_settings(self._settings)
+            self._check_ffmpeg()
+            self.protocol("WM_DELETE_WINDOW", self._on_close)
+            self.after(50, self._poll_queue)
+        except Exception:
+            logger.exception("Falha ao concluir arranque da aplicacao")
+            raise
+        finally:
+            shell = getattr(self, "_shell_body", None)
+            if shell is not None:
+                shell.grid(row=0, column=0, sticky="nsew")
+            self.update_idletasks()
+            w, h = parse_window_size(WINDOW_SIZE)
+            self.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
+            center_window_on_screen(self, w, h)
+            if getattr(self, "_splash", None) is not None:
+                self._splash.destroy()
+                self._splash = None
+            self.deiconify()
+            self.title(APP_TITLE)
+            self.lift()
+            try:
+                self.focus_force()
+            except tk.TclError:
+                pass
 
     def _on_nav_select(self, view_id: str) -> None:
         self._switch_view(view_id)
@@ -341,7 +377,7 @@ class YoutubeDownloaderApp(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
 
         body = ctk.CTkFrame(self, fg_color="transparent")
-        body.grid(row=0, column=0, sticky="nsew")
+        self._shell_body = body
         body.grid_columnconfigure(2, weight=1)
         body.grid_rowconfigure(0, weight=1)
 

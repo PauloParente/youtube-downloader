@@ -622,9 +622,10 @@ class DownloadsView(ctk.CTkFrame):
     def _on_scroll_wraplength(self) -> None:
         if self._scroll is None:
             return
-        apply_wraplength_from_widget(
-            self._queue_active_label, self._scroll, pad=48, max_px=640
-        )
+        if hasattr(self, "_queue_active_label"):
+            apply_wraplength_from_widget(
+                self._queue_active_label, self._scroll, pad=48, max_px=640
+            )
         if hasattr(self, "_mid"):
             apply_wraplength_from_widget(
                 self._preview_title_label, self._mid, pad=48, max_px=520

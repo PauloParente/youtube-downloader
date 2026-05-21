@@ -95,6 +95,8 @@ cd src
 python -m youtube_downloader
 ```
 
+Ao abrir, uma **tela de splash** (logo, nome e mensagem de carregamento) é exibida enquanto a interface principal carrega.
+
 ## Funcionalidades
 
 - Download de vídeo único; link de **playlist** expande automaticamente para vários vídeos na fila (um job por vídeo)
