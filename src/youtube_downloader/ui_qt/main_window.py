@@ -708,6 +708,12 @@ class MainWindow(QMainWindow):
     def _run_download_job(self, job: DownloadJob) -> None:
         if self._downloads_view is None:
             return
+        if self._download_worker_alive():
+            logger.warning(
+                "Download ignorado: thread anterior ainda ativa para %s",
+                (self._active_download_job.url if self._active_download_job else job.url),
+            )
+            return
         self._active_download_job = job
         self._qthread = start_download_thread(
             self._downloader,
@@ -735,7 +741,6 @@ class MainWindow(QMainWindow):
             if self._downloads_view:
                 self._downloads_view.handle_progress_event(event)
             if self._queue_view and self._downloads_view:
-                self._queue_view.apply_progress_event(event)
                 if event.event_type in (
                     EventType.PROGRESS,
                     EventType.LOG,
@@ -744,6 +749,7 @@ class MainWindow(QMainWindow):
                     EventType.CANCELLED,
                 ):
                     self._sync_now_playing_panel()
+                self._queue_view.apply_progress_event(event)
                 if is_terminal_download_event(event.event_type):
                     continue_after_cancel = False
                     is_downloading = self._downloads_view.is_downloading

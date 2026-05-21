@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, Qt, QThread, Signal
 
 from youtube_downloader.core.downloader import YoutubeDownloader
 from youtube_downloader.core.models import DownloadJob, ProgressEvent
@@ -41,8 +41,11 @@ def start_download_thread(
     thread = QThread()
     worker = DownloadWorker(downloader, job)
     worker.moveToThread(thread)
+    # Keep a strong reference on the thread; otherwise Python GC can delete the
+    # worker while QThread is still running (no progress signals, QThread warning).
+    thread._download_worker = worker  # type: ignore[attr-defined]
     thread.started.connect(worker.run)
-    worker.progress.connect(on_progress)
+    worker.progress.connect(on_progress, Qt.ConnectionType.QueuedConnection)
     worker.finished.connect(thread.quit)
     worker.finished.connect(worker.deleteLater)
     thread.finished.connect(thread.deleteLater)

@@ -979,10 +979,8 @@ class DownloadsView(QWidget):
         self._sync_progress_strip()
         if self._preview_panel is not None:
             self._preview_panel.hide_alert()
-        if queue_continue:
-            self._on_sync_now_playing()
-        else:
-            self._sync_queue_ui()
+        self._sync_queue_ui()
+        self._on_sync_now_playing()
 
         self._on_start_download(job)
 
