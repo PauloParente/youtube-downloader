@@ -23,6 +23,8 @@ from youtube_downloader.ui_qt.theme_tokens import (
     RADIUS_CARD,
     INPUT_HERO_HEIGHT,
     RADIUS_INPUT,
+    PREVIEW_EMPTY_ICON_SIZE,
+    PREVIEW_EMPTY_MIN_HEIGHT,
     RADIUS_THUMB,
     SIDEBAR_WIDTH,
     ThemePalette,
@@ -139,6 +141,25 @@ QFrame#surfaceInset {{
     border: none;
     border-radius: {RADIUS_INPUT}px;
 }}
+QFrame#previewEmpty {{
+    background-color: transparent;
+    border: 1px dashed {p.card_border};
+    border-radius: {RADIUS_CARD}px;
+    min-height: {PREVIEW_EMPTY_MIN_HEIGHT}px;
+}}
+QFrame#previewEmptyIcon {{
+    background-color: {p.btn_secondary};
+    border: 1px solid {p.btn_secondary_border};
+    border-radius: {PREVIEW_EMPTY_ICON_SIZE // 2}px;
+    min-width: {PREVIEW_EMPTY_ICON_SIZE}px;
+    max-width: {PREVIEW_EMPTY_ICON_SIZE}px;
+    min-height: {PREVIEW_EMPTY_ICON_SIZE}px;
+    max-height: {PREVIEW_EMPTY_ICON_SIZE}px;
+}}
+QFrame#previewEmptyIcon QLabel {{
+    background-color: transparent;
+    border: none;
+}}
 QPlainTextEdit#logInset {{
     background-color: {p.surface_elevated};
     border: none;
@@ -177,14 +198,14 @@ QFrame#urlToolRow QLabel#urlValidIcon, QFrame#urlToolRow QLabel#urlInvalidIcon {
     max-height: {INPUT_HERO_HEIGHT}px;
 }}
 QFrame#statusBanner {{
-    background-color: {p.accent_subtle};
-    border: 1px solid {ACCENT_MUTED};
+    background-color: {p.alert_info_bg};
+    border: 1px solid {p.alert_info_border};
     border-radius: {RADIUS_INPUT}px;
     padding: 8px 12px;
 }}
 QFrame#statusBanner QLabel {{
     background-color: transparent;
-    color: {p.text_primary};
+    color: {p.alert_info_text};
 }}
 QFrame#statusBanner QPushButton#statusBannerClose {{
     background-color: transparent;
@@ -207,13 +228,14 @@ QFrame#downloadAlert {{
 QFrame#downloadAlert QLabel {{
     color: {p.text_primary};
 }}
-QLabel#destinationChip {{
+QPushButton#destinationChip {{
     color: {p.text_secondary};
-    padding: 4px 8px;
+    padding: 4px 10px;
     border-radius: {RADIUS_BUTTON}px;
     background-color: {p.btn_secondary};
+    border: 1px solid {p.btn_secondary_border};
 }}
-QLabel#destinationChip:hover {{
+QPushButton#destinationChip:hover {{
     background-color: {p.btn_secondary_hover};
     color: {p.text_primary};
 }}
@@ -300,10 +322,10 @@ QComboBox QAbstractItemView {{
 QPushButton {{
     background-color: {p.btn_secondary};
     color: {p.text_primary};
-    border: none;
+    border: 1px solid {p.btn_secondary_border};
     border-radius: {RADIUS_BUTTON}px;
     padding: 8px 14px;
-    min-height: 28px;
+    min-height: 36px;
 }}
 QPushButton:hover {{
     background-color: {p.btn_secondary_hover};
@@ -316,6 +338,7 @@ QPushButton#primary {{
     background-color: {ACCENT};
     color: #FFFFFF;
     font-weight: bold;
+    border: 1px solid {ACCENT};
     min-height: 40px;
     padding: 10px 18px;
 }}
@@ -329,17 +352,21 @@ QPushButton#primary:disabled {{
 QPushButton#ghost {{
     background-color: transparent;
     color: {p.text_secondary};
+    border: none;
 }}
 QPushButton#ghost:hover {{
     background-color: {p.btn_secondary};
     color: {p.text_primary};
+    border: 1px solid {p.btn_secondary_border};
 }}
 QPushButton#danger {{
     background-color: transparent;
     color: {DANGER};
+    border: none;
 }}
 QPushButton#danger:hover {{
     background-color: {p.btn_secondary};
+    border: 1px solid {p.btn_secondary_border};
 }}
 QFrame#navPill {{
     background-color: {p.accent_subtle};
@@ -380,7 +407,7 @@ QPushButton#nav {{
     max-height: 40px;
 }}
 QPushButton#nav[navActive="true"] {{
-    color: {ACCENT};
+    color: {p.text_primary};
     background-color: transparent;
 }}
 QPushButton#nav:focus {{
@@ -389,6 +416,7 @@ QPushButton#nav:focus {{
 QPushButton#sectionToggle {{
     background-color: transparent;
     color: {p.text_secondary};
+    border: none;
     padding: 4px 8px;
     min-width: 28px;
     max-width: 32px;
@@ -404,6 +432,7 @@ QPushButton#nav:hover:!pressed {{
 QPushButton#link {{
     background-color: transparent;
     color: {p.link_color};
+    border: none;
     text-align: left;
     padding: 0px 4px;
     min-height: 20px;
@@ -413,6 +442,7 @@ QPushButton#link:hover {{
 }}
 QPushButton#iconOnly {{
     padding: 6px;
+    border: none;
     min-width: 32px;
     max-width: 40px;
 }}

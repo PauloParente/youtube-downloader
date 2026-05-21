@@ -12,21 +12,24 @@ Identidade visual centralizada em tokens Python e QSS global. Evitar `setStyleSh
 | [`ui_qt/icons.py`](../src/youtube_downloader/ui_qt/icons.py) | Ícones SVG embutidos |
 | [`resources/icons/`](../src/youtube_downloader/resources/icons/) | SVGs (empacotados no `.exe`) |
 
-## Tokens de cor (dark)
+## Tokens de cor (dark — GitHub-style)
 
-| Token | Uso |
-|-------|-----|
-| `app_bg` | Fundo da janela |
-| `card_bg` / `card_border` | Cards (`#card`) |
-| `input_bg` / `input_border` | Campos de texto |
-| `text_primary` / `text_secondary` / `text_muted` | Hierarquia de texto |
-| `accent` / `accent_hover` / `accent_muted` | Ação primária, progresso, focus outline |
-| `accent_subtle` | Item nav ativo, hovers suaves |
-| `surface_elevated` | Placeholder de miniatura, fundo inset |
-| `divider` | Separador sidebar/conteúdo (`#sidebarDivider`) |
-| `danger` | Ações destrutivas discretas |
+| Token | Valor (dark) | Uso |
+|-------|--------------|-----|
+| `app_bg` | `#0D1117` | Fundo da janela |
+| `sidebar_bg` | `#161B22` | Sidebar e coluna da title bar |
+| `card_bg` / `card_border` | `#161B22` / `#30363D` | Cards (`#card`) |
+| `input_bg` / `input_border` | `#0D1117` / `#30363D` | Campos de texto |
+| `text_primary` / `text_secondary` / `text_muted` | `#FFFFFF` / `#8B949E` / `#6E7681` | Hierarquia de texto |
+| `ACCENT` / `ACCENT_HOVER` | `#007BFF` / `#0069D9` | Ação primária, progresso, focus |
+| `accent_subtle` | `#111D2C` | Pill nav ativo, hovers suaves |
+| `btn_secondary` + `btn_secondary_border` | `#21262D` + `#30363D` | Botões secundários com borda |
+| `alert_info_bg` / `alert_info_border` / `alert_info_text` | `#111D2C` / `#1F6FEB` / `#58A6FF` | `#statusBanner` informativo |
+| `surface_elevated` | `#21262D` | Skeleton, log inset |
+| `divider` | `#30363D` | Separadores (`#sidebarDivider`, `#actionDock`) |
+| `danger` | `#DC3545` | Ações destrutivas |
 
-Light mode: mesmos nomes em `LightPalette` com valores ajustados para contraste.
+Light mode: mesmos nomes em `LIGHT` (`ThemePalette`) com valores ajustados para contraste.
 
 ## Espaçamento (grid 8px)
 
@@ -40,7 +43,7 @@ Padding interno de card: 16px (`Card` / QSS).
 
 | objectName / class | Tamanho | Uso |
 |--------------------|---------|-----|
-| `pageTitle` | 22px semibold | Título de página (`PageHeader`) |
+| `pageTitle` | 26px semibold | Título de página (`PageHeader`) |
 | `sectionTitle` | 13px semibold | Secções (ex. Atividade) |
 | `class="muted"` | 12px | Metadados, versão |
 | `class="secondary"` | 12px | Subtítulos |
@@ -58,7 +61,8 @@ Padding interno de card: 16px (`Card` / QSS).
 | `ThumbnailLabel` | `thumb` | Miniatura + badge opcional |
 | `Separator` | — | Linha horizontal |
 | `PrimaryButton` | `primary` | Uma por ecrã |
-| `GhostButton` | `ghost` | Secundário / link |
+| `SecondaryButton` | — | Secundário com borda (QSS global); Colar, + Fila |
+| `GhostButton` | `ghost` | Ações discretas sem borda (Limpar URL) |
 | `DangerButton` | `danger` | Remover, cancelar forte |
 | Nav | `nav` | Sidebar checkable; hover/press animados em `NavButton`; foco teclado (`:focus` + `focus_border`) |
 | Indicador nav | `navPill` | Pill `accent_subtle` + barra esquerda 2px `ACCENT`; desliza ~200ms |
@@ -69,14 +73,15 @@ Padding interno de card: 16px (`Card` / QSS).
 | Barra de título (frameless) | `customTitleBar` | Marca na coluna da sidebar (`titleBarBrand`): ícone + `titleBarTitle` (13px, semibold) + arrastar (`titleBarDrag`) + ícones SVG nos botões da janela |
 | Divisor título / conteúdo | `titleBarDivider` | 1px horizontal (`divider`), entre `customTitleBar` e o corpo |
 | Contorno da janela (frameless) | `windowRoot` | Borda 1px `card_border` no `centralWidget`; resize nas bordas (~6px) via `WM_NCHITTEST` (Windows) ou arrasto com rato |
-| Preview vazio / inset | `surfaceInset` | Sem borda dupla com card pai |
+| Preview vazio (Downloads) | `previewEmpty` / `previewEmptyIcon` | Moldura tracejada; ícone circular (`PREVIEW_EMPTY_MIN_HEIGHT=240`) |
+| Preview loading / inset | `surfaceInset` | Skeleton sem borda dupla com card pai |
 | Log de atividade | `logInset` | `QPlainTextEdit` dentro do card ATIVIDADE |
 | Toggle de secção | `sectionToggle` | Colapsar ATIVIDADE (Downloads) |
 | Campo URL hero | `urlHero` | Input principal na tela Downloads (`INPUT_HERO_HEIGHT`) |
 | Linha URL + ações | `urlToolRow` | Colar, + Fila, ícones — mesma altura que `urlHero` |
 | Faixa de progresso | `progressStrip` | Download em curso na Downloads |
 | Skeleton preview | `skeletonLine` | Placeholder de metadados |
-| Action dock | `actionDock` | Rodapé fixo (status + ações) |
+| Action dock | `actionDock` | Rodapé fixo: linha 1 status + atalhos; linha 2 pasta/ações/Baixar |
 | Segmentado | `segment` | Vídeo / Áudio (`SegmentedControl`) |
 | Primário outline | `primaryOutline` | Baixar quando URL inválida |
 
@@ -85,11 +90,12 @@ Padding interno de card: 16px (`Card` / QSS).
 | Banner de status | `statusBanner` / `statusBannerSlot` | Avisos FFmpeg no topo do conteúdo; slot com margem 16px (laterais) e 8px (vertical) |
 | Filtro de lista | `filterInput` | Histórico / Biblioteca |
 | Linha compacta | `compactRow` | Histórico, Fila pendente, Biblioteca |
-| Estado vazio | — | `EmptyState` (ícone + título + CTA opcional) |
+| Estado vazio (listas) | — | `EmptyState` (ícone + título + CTA opcional) |
+| Preview vazio tracejado | `previewEmpty` | `PreviewEmptyPanel` na tela Downloads |
 | Alerta de erro (Downloads) | `downloadAlert` | Banner dismissível acima do preview |
 | Chip pasta destino | `destinationChip` | Action dock — abre pasta de download |
 
-Widgets reutilizáveis: `AppearanceToggle`, `PreviewSkeleton`, `MediaPreviewRow`, `CompactMediaRow`, `EmptyState`, `DownloadAlert`, `StatusBanner`, `UrlDropLineEdit`, `DownloadOptionsBar`, `DownloadProgressStrip`, `SegmentedControl` em `ui_qt/widgets/`.
+Widgets reutilizáveis: `AppearanceToggle`, `PreviewSkeleton`, `PreviewEmptyPanel`, `MediaPreviewRow`, `CompactMediaRow`, `EmptyState`, `DownloadAlert`, `StatusBanner`, `UrlDropLineEdit`, `DownloadOptionsBar`, `DownloadProgressStrip`, `SegmentedControl`, `SecondaryButton` em `ui_qt/widgets/`.
 
 Raios: `RADIUS_CARD=10`, `RADIUS_BUTTON` / `RADIUS_INPUT=8`. Fonte base: `FONT_BODY=13`, família `Segoe UI Variable`.
 
@@ -98,8 +104,8 @@ Helper `field_label(text)` — mesmo estilo que `class="fieldLabel"`.
 ## Hierarquia de botões
 
 1. **Primário** (`#primary`): ação principal (Baixar, Salvar).
-2. **Padrão** (QSS global): secundário (Abrir pasta, + Fila).
-3. **Ghost** (`#ghost`): limpar, fechar, ícones discretos.
+2. **Padrão** (`SecondaryButton` / QSS global): borda `btn_secondary_border` (Abrir pasta, Colar, + Fila).
+3. **Ghost** (`#ghost`): limpar, fechar — sem borda até hover.
 4. **Danger** (`#danger`): remover da fila/histórico quando precisa destaque.
 
 ## Tema em runtime

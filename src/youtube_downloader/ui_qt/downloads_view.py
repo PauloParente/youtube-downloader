@@ -57,7 +57,7 @@ from youtube_downloader.ui_qt.event_bridge import EventBridge
 from youtube_downloader.ui_qt.playlist_choice_dialog import ask_video_in_playlist_choice
 from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
 from youtube_downloader.ui_qt.theme import polish_widget
-from youtube_downloader.ui_qt.theme_tokens import PAGE_MARGINS
+from youtube_downloader.ui_qt.theme_tokens import PAGE_MARGINS, SPACE_LG, SPACE_SM
 from youtube_downloader.ui_qt.util import pixmap_from_bytes, run_on_main, schedule
 from youtube_downloader.ui_qt.widgets.url_drop_line_edit import UrlDropLineEdit
 from youtube_downloader.ui_qt.widgets import (
@@ -68,6 +68,7 @@ from youtube_downloader.ui_qt.widgets import (
     LinkButton,
     PageHeader,
     PrimaryButton,
+    SecondaryButton,
     SectionTitle,
     apply_page_margins,
     muted_label,
@@ -75,7 +76,6 @@ from youtube_downloader.ui_qt.widgets import (
 
 logger = get_logger(__name__)
 
-SECTION_GAP = 10
 LOG_TEXTBOX_HEIGHT = 160
 LOG_TEXTBOX_HEIGHT_COLLAPSED = 48
 QUEUE_URL_TRUNCATE = 58
@@ -449,6 +449,7 @@ class DownloadsView(QWidget):
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
         apply_page_margins(scroll_layout)
+        scroll_layout.setSpacing(SPACE_LG)
 
         scroll_layout.addWidget(
             PageHeader(
@@ -489,12 +490,12 @@ class DownloadsView(QWidget):
         self._url_invalid_icon.setPixmap(themed_icon("clear", 18).pixmap(18, 18))
         self._url_invalid_icon.hide()
         url_row.addWidget(self._url_invalid_icon)
-        paste_btn = GhostButton("Colar")
-        icon_on_button(paste_btn, "link", size=16)
+        paste_btn = SecondaryButton("Colar")
+        icon_on_button(paste_btn, "link", size=18)
         paste_btn.clicked.connect(self._paste_url)
         url_row.addWidget(paste_btn)
-        self._enqueue_btn = GhostButton("+ Fila")
-        icon_on_button(self._enqueue_btn, "queue", size=16)
+        self._enqueue_btn = SecondaryButton("+ Fila")
+        icon_on_button(self._enqueue_btn, "queue", size=18)
         self._enqueue_btn.clicked.connect(self._enqueue_current_url)
         url_row.addWidget(self._enqueue_btn)
         self._view_queue_btn = LinkButton("")
@@ -553,16 +554,22 @@ class DownloadsView(QWidget):
         self._action_dock.setObjectName("actionDock")
         dock_l, dock_t, dock_r, dock_b = PAGE_MARGINS
         dock_layout = QVBoxLayout(self._action_dock)
-        dock_layout.setContentsMargins(dock_l, 12, dock_r, dock_b)
-        dock_layout.setSpacing(10)
+        dock_layout.setContentsMargins(dock_l, SPACE_SM, dock_r, dock_b)
+        dock_layout.setSpacing(SPACE_SM)
 
+        status_row = QHBoxLayout()
+        status_row.setSpacing(SPACE_SM)
         self._status_label = muted_label(DEFAULT_STATUS_TEXT)
-        dock_layout.addWidget(self._status_label)
-
-        self._shortcuts_hint = muted_label("Ctrl+V colar · Enter baixar · Esc cancelar ou limpar")
-        dock_layout.addWidget(self._shortcuts_hint)
+        status_row.addWidget(self._status_label)
+        status_row.addStretch()
+        self._shortcuts_hint = muted_label(
+            "Ctrl+V colar · Enter baixar · Esc cancelar ou limpar"
+        )
+        status_row.addWidget(self._shortcuts_hint)
+        dock_layout.addLayout(status_row)
 
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(SPACE_SM)
         self._destination_chip = QPushButton()
         self._destination_chip.setObjectName("destinationChip")
         self._destination_chip.setFlat(True)
