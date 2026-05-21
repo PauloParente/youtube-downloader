@@ -18,6 +18,21 @@ Prefixos: `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, `ci/` + keba
 
 **Uma branch = um assunto = um PR.** Não acumular tópicos diferentes na mesma branch.
 
+## Antes de desenvolver (agentes — obrigatório)
+
+**Antes da primeira edição de código**, executar e avaliar (não commitar às cegas na branch ativa):
+
+```powershell
+git fetch origin
+git branch --show-current
+git branch -a
+git status
+```
+
+Decidir se **mantém** a branch atual (nome e assunto alinhados ao pedido) ou **troca** / cria branch (`main` atualizada → `git checkout -b <tipo>/<assunto>`). Se já existir branch remota/local para o **mesmo** assunto, pode fazer checkout em vez de duplicar.
+
+Informar o usuário qual branch será usada e porquê. Alterações de outro assunto na branch errada → `git stash` → branch correta → `stash pop` (skill `youtube-downloader-git`, secção *Antes de editar código*).
+
 Antes de criar branch:
 
 ```powershell

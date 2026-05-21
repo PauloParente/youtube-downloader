@@ -22,6 +22,8 @@ Python 3.10+, PySide6, yt-dlp, Pillow, FFmpeg. Entrada: `main.py` ou `python -m 
 
 Operações Git: seguir [`.cursor/rules/git-workflow.mdc`](git-workflow.mdc) e [docs/git-workflow.md](../../docs/git-workflow.md).
 
+**Agentes:** antes da primeira edição de código, verificar branch atual e branches existentes; avaliar se mantém, troca ou cria branch para o assunto pedido (skill `youtube-downloader-git`).
+
 Não commitar: `settings.json`, `history.json`, `downloads/`, `logs/`, `.venv/`, `vendor/`, `dist/`.
 
 ## Antes de concluir uma feature

@@ -14,6 +14,7 @@ Playbook para opções que afetam o yt-dlp. Arquitetura: [AGENTS.md](../../../AG
 
 ## Antes de codar
 
+- [ ] **Git:** `git branch --show-current`, `git branch -a`, `git status` — branch alinhada ao assunto? Se não, trocar/criar antes de editar (`youtube-downloader-git`).
 - [ ] Ler em AGENTS.md: tabela *Implementado vs. pendente* e regra **Salvar** em Configurações.
 - [ ] Opções da tela **Downloads** (pasta, qualidade, áudio) aplicam-se ao baixar; opções em **Configurações** exigem **Salvar** (ou valor já em `settings.json`).
 

@@ -1,10 +1,11 @@
 ---
 name: youtube-downloader-git
 description: >-
-  Protocolo Git do projeto: GitHub Flow, uma branch por assunto/PR, checklist
-  antes de commit/push, recuperação com stash se branch errada, Conventional
-  Commits, PR para main, squash merge, tags. Use em git, branch, commit, push,
-  pull request, merge ou tag.
+  Protocolo Git do projeto: verificar branch e branches existentes ANTES de
+  editar código; GitHub Flow, uma branch por assunto/PR, checklist antes de
+  commit/push, stash se branch errada, Conventional Commits, PR, tags. Use em
+  git, branch, commit, push, pull request, merge, tag ou ao iniciar qualquer
+  implementação.
 ---
 
 # YouTube Downloader — Git (agentes e contribuidores)
@@ -16,7 +17,65 @@ Referência: [docs/git-workflow.md](../../../docs/git-workflow.md). Regra: [`.cu
 - **GitHub Flow** — `main` estável; trabalho em branch curta; integração via **PR**; **squash merge** recomendado.
 - **Conventional Commits obrigatórios** em todas as mensagens.
 
-## Início de uma tarefa
+## Antes de editar código (obrigatório para agentes)
+
+**Não** alterar ficheiros do projeto até concluir esta verificação e decidir a branch. Aplica-se a features, fixes, UI, docs, refactor e testes.
+
+### 1. Recolher contexto Git
+
+Correr em paralelo:
+
+```powershell
+git fetch origin
+git branch --show-current
+git branch -a
+git status
+git log -5 --oneline
+```
+
+Opcional se a branch já existir há tempo: `git log origin/main..HEAD --oneline` e `git diff origin/main...HEAD --stat`.
+
+### 2. Identificar o assunto do pedido
+
+Resumir em uma linha (ex.: `feat/ui-appearance-toggle`, `docs/git-workflow`, `fix/core-download-cancel`). O **prefixo** da branch deve corresponder ao tipo de trabalho (`feat/`, `fix/`, `docs/`, etc.).
+
+### 3. Avaliar: manter branch atual ou trocar?
+
+| Situação | Ação |
+|----------|------|
+| Branch atual **é** a do assunto (nome alinhado; commits/diff só deste assunto; PR ainda aberto ou trabalho em curso) | **Manter** e desenvolver aqui |
+| Já existe `origin/<tipo>/<assunto>` (ou local) para **o mesmo** pedido e não há conflito com outro trabalho | **Checkout** dessa branch; `git pull` se já publicada |
+| Assunto **novo**, branch com outro nome, ou branch de PR **já mergeada** em `main` | **Nova branch** a partir de `main` atualizada (ver abaixo) |
+| Pedido é só documentação/regras Cursor e a branch ativa é `feat/` ou `fix/` | **Trocar** para `docs/...` — não misturar |
+| `git status` com alterações de **outro** assunto na branch errada | **Não** commitar; `git stash` (caminhos específicos) → branch correta → `stash pop` |
+
+Se houver dúvida entre manter e criar nova, preferir **branch nova** a partir de `main` (evita misturar PRs).
+
+### 4. Comunicar ao usuário (breve)
+
+Antes da primeira edição de código, indicar em 1–2 frases:
+
+- branch em que vai trabalhar (ou que vai criar);
+- motivo (ex.: “assunto novo”, “continuação de `feat/ui-…`”, “estava em `docs/…`, a criar `feat/…`”).
+
+### 5. Preparar a branch escolhida
+
+**Manter branch atual:** `git pull` se existir `origin/<branch>` e fizer sentido sincronizar.
+
+**Nova branch ou troca:**
+
+```powershell
+git fetch origin
+git checkout main
+git pull origin main
+git checkout -b <tipo>/<descricao-kebab>   # ou: git checkout <branch-existente>
+```
+
+Se `git status` não estiver limpo ao trocar, usar `git stash push -u -m "<assunto>"` antes do `checkout` e `git stash pop` na branch destino.
+
+## Início de uma tarefa (branch nova)
+
+Quando a decisão for criar branch (secção acima):
 
 ```powershell
 git fetch origin
