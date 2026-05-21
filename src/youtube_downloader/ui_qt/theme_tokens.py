@@ -22,6 +22,9 @@ RADIUS_INPUT = 8
 RADIUS_BUTTON = 8
 RADIUS_THUMB = 8
 
+# Hero inputs (URL Downloads, filtros Histórico/Biblioteca) e controlos na mesma linha
+INPUT_HERO_HEIGHT = 44
+
 FONT_FAMILY = '"Segoe UI Variable", "Segoe UI"'
 FONT_BODY = 13
 FONT_TITLE_BAR = 13

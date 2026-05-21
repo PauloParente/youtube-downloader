@@ -72,7 +72,8 @@ Padding interno de card: 16px (`Card` / QSS).
 | Preview vazio / inset | `surfaceInset` | Sem borda dupla com card pai |
 | Log de atividade | `logInset` | `QPlainTextEdit` dentro do card ATIVIDADE |
 | Toggle de secção | `sectionToggle` | Colapsar ATIVIDADE (Downloads) |
-| Campo URL hero | `urlHero` | Input principal na tela Downloads |
+| Campo URL hero | `urlHero` | Input principal na tela Downloads (`INPUT_HERO_HEIGHT`) |
+| Linha URL + ações | `urlToolRow` | Colar, + Fila, ícones — mesma altura que `urlHero` |
 | Faixa de progresso | `progressStrip` | Download em curso na Downloads |
 | Skeleton preview | `skeletonLine` | Placeholder de metadados |
 | Action dock | `actionDock` | Rodapé fixo (status + ações) |

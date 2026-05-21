@@ -21,6 +21,7 @@ from youtube_downloader.ui_qt.theme_tokens import (
     LIGHT,
     RADIUS_BUTTON,
     RADIUS_CARD,
+    INPUT_HERO_HEIGHT,
     RADIUS_INPUT,
     RADIUS_THUMB,
     SIDEBAR_WIDTH,
@@ -146,12 +147,34 @@ QPlainTextEdit#logInset {{
     font-family: Consolas, "Cascadia Mono", monospace;
 }}
 QLineEdit#urlHero, QLineEdit#filterInput {{
-    min-height: 44px;
+    min-height: {INPUT_HERO_HEIGHT}px;
     padding: 10px 12px 10px 12px;
     font-size: 14px;
 }}
 QLineEdit#urlHero {{
     padding-left: 36px;
+}}
+QFrame#urlToolRow {{
+    background: transparent;
+    border: none;
+}}
+QFrame#urlToolRow QPushButton {{
+    min-height: {INPUT_HERO_HEIGHT}px;
+}}
+QFrame#urlToolRow QPushButton#iconOnly {{
+    min-width: {INPUT_HERO_HEIGHT}px;
+    max-width: {INPUT_HERO_HEIGHT}px;
+    min-height: {INPUT_HERO_HEIGHT}px;
+    max-height: {INPUT_HERO_HEIGHT}px;
+    padding: 0;
+}}
+QFrame#urlToolRow QPushButton#link {{
+    min-height: {INPUT_HERO_HEIGHT}px;
+    padding: 8px 12px;
+}}
+QFrame#urlToolRow QLabel#urlValidIcon, QFrame#urlToolRow QLabel#urlInvalidIcon {{
+    min-height: {INPUT_HERO_HEIGHT}px;
+    max-height: {INPUT_HERO_HEIGHT}px;
 }}
 QFrame#statusBanner {{
     background-color: {p.accent_subtle};
