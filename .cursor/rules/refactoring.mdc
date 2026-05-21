@@ -10,14 +10,15 @@ Consulte [AGENTS.md](../../AGENTS.md) — seção *Backlog de refatoração*.
 ## Princípios
 
 1. **Comportamento separado de estrutura** — um PR só move código; outro altera regras de negócio.
-2. **Extrair antes de reescrever** — copiar para `ui/downloads_view.py` (ou `core/`), manter assinaturas, `pytest` verde.
-3. **Não big-bang** — `app.py` tem ~1250 linhas; fatiar em PRs pequenos.
+2. **Extrair antes de reescrever** — copiar para `ui/` ou `core/`, manter assinaturas, `pytest` verde.
+3. **Não big-bang** — fatiar `downloads_view.py` ou `app.py` em PRs pequenos.
 
 ## Prioridade alta
 
 | Meta | Ação |
 |------|------|
-| `DownloadsView` | Mover tela Downloads de `app.py` para `ui/downloads_view.py`; app só faz wiring + fila |
+| `DownloadsView` | Shell fino em `app.py`; lógica pura em `core/download_url_flow.py`, `core/queue_coordinator.py` |
+| Preview | `ui/downloads_preview.py` — não crescer `downloads_view` com preview novo |
 | Settings → download | Estender `DownloadJob` + `YoutubeDownloader`; não só UI |
 
 ## Ao extrair de app.py

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Optional
@@ -276,15 +275,6 @@ class QueueView(ctk.CTkFrame):
             text="",
         )
 
-    @staticmethod
-    def _pil_rgb_from_bytes(data: bytes) -> Image.Image:
-        base = Image.open(io.BytesIO(data))
-        if base.mode == "RGBA":
-            background = Image.new("RGB", base.size, (40, 40, 40))
-            background.paste(base, mask=base.split()[3])
-            return background
-        return base.convert("RGB")
-
     def _ctk_image_from_pil(self, img: Image.Image, size: tuple[int, int]) -> ctk.CTkImage:
         ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=size)
         self._card_thumb_images.append(ctk_img)
@@ -296,7 +286,7 @@ class QueueView(ctk.CTkFrame):
             self._configure_now_thumb(None)
             return
         try:
-            base = self._pil_rgb_from_bytes(data)
+            base = pil_rgb_from_bytes(data)
             self._thumb_pil_light = base.copy()
             self._thumb_pil_dark = base.copy()
             self._ctk_thumb_image = ctk.CTkImage(

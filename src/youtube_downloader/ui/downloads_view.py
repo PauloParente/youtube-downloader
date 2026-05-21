@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import io
 import os
 import queue
-import subprocess
 import sys
 import threading
 import tkinter as tk
@@ -13,7 +11,6 @@ from collections.abc import Callable
 from typing import Literal, Optional
 
 import customtkinter as ctk
-from PIL import Image
 
 from youtube_downloader.config import (
     DEFAULT_DOWNLOADS_DIR,
@@ -23,19 +20,18 @@ from youtube_downloader.config import (
     QUALITY_FROM_DISPLAY,
     QUALITY_OPTIONS,
 )
-from youtube_downloader.core.logging_config import (
-    LOG_CACHE_DIR,
-    clear_preview_cache,
-    get_logger,
-)
-from youtube_downloader.core.metadata import (
-    VideoPreview,
-    fetch_preview,
-    format_duration,
-    is_youtube_url,
-)
+from youtube_downloader.core.logging_config import get_logger
+from youtube_downloader.core.metadata import VideoPreview, is_youtube_url
+from youtube_downloader.core.path_utils import open_path_in_explorer
 from youtube_downloader.core.preview_cache import PreviewCache
 from youtube_downloader.core.download_job_builder import build_download_job
+from youtube_downloader.core.download_url_flow import (
+    ResolvedUrlPlanKind,
+    format_enqueue_log,
+    format_playlist_download_start_log,
+    needs_network_expand,
+    plan_resolved_urls,
+)
 from youtube_downloader.core.playlist_urls import (
     PlaylistExpandError,
     PlaylistMode,
@@ -46,6 +42,7 @@ from youtube_downloader.core.playlist_urls import (
 from youtube_downloader.core.models import DownloadJob, EventType, ProgressEvent
 from youtube_downloader.core.settings import AppSettings
 from youtube_downloader.core.text_utils import truncate_text
+from youtube_downloader.ui.downloads_preview import DownloadsPreviewPanel
 from youtube_downloader.ui.layout_utils import apply_wraplength_from_widget
 from youtube_downloader.ui.playlist_choice_dialog import ask_video_in_playlist_choice
 from youtube_downloader.ui.theme import (
@@ -68,8 +65,6 @@ from youtube_downloader.ui.theme import (
 
 logger = get_logger(__name__)
 
-PREVIEW_DEBOUNCE_MS = 600
-THUMB_DISPLAY_SIZE = (240, 135)
 SECTION_GAP = 10
 LOG_TEXTBOX_HEIGHT = 160
 QUEUE_URL_TRUNCATE = 58
@@ -86,8 +81,7 @@ class DownloadsView(ctk.CTkFrame):
         on_start_download: Callable[[DownloadJob], None],
         on_cancel_download: Callable[[], None],
         on_persist_settings: Callable[[], None],
-        on_add_history: Callable[..., None],
-        on_add_history_async: Callable[..., None],
+        on_record_history: Callable[[ProgressEvent], None],
         on_get_app_settings: Callable[[], AppSettings],
         on_enqueue_url: Callable[[str], bool],
         on_enqueue_urls: Callable[[list[str]], int],
@@ -105,8 +99,7 @@ class DownloadsView(ctk.CTkFrame):
         self._on_start_download = on_start_download
         self._on_cancel_download = on_cancel_download
         self._on_persist_settings = on_persist_settings
-        self._on_add_history = on_add_history
-        self._on_add_history_async = on_add_history_async
+        self._on_record_history = on_record_history
         self._get_app_settings = on_get_app_settings
         self._on_enqueue_url = on_enqueue_url
         self._on_enqueue_urls = on_enqueue_urls
@@ -122,15 +115,7 @@ class DownloadsView(ctk.CTkFrame):
         self._is_downloading = False
         self._last_progress_percent: Optional[float] = None
         self._now_playing_title: Optional[str] = None
-        self._preview_after_id: Optional[str] = None
-        self._preview_request_id = 0
-        self._current_preview: Optional[VideoPreview] = None
-        self._ctk_preview_image: Optional[ctk.CTkImage] = None
-        self._preview_pil_light: Optional[Image.Image] = None
-        self._preview_pil_dark: Optional[Image.Image] = None
-        self._placeholder_image: Optional[ctk.CTkImage] = None
-        self._placeholder_pil_light: Optional[Image.Image] = None
-        self._placeholder_pil_dark: Optional[Image.Image] = None
+        self._preview_panel: Optional[DownloadsPreviewPanel] = None
         self._status_reset_after_id: Optional[str] = None
         self._last_download_filepath: Optional[str] = None
         self._log_body: Optional[ctk.CTkFrame] = None
@@ -198,8 +183,9 @@ class DownloadsView(ctk.CTkFrame):
         title = (self._now_playing_title or "").strip()
         if not title and cached and cached.title:
             title = cached.title.strip()
-        if not title and self._current_preview and self._current_preview.title:
-            title = self._current_preview.title.strip()
+        preview = self._preview_panel.current_preview if self._preview_panel else None
+        if not title and preview and preview.title:
+            title = preview.title.strip()
         status = DEFAULT_STATUS_TEXT
         if hasattr(self, "_status_label"):
             status = self._status_label.cget("text") or status
@@ -220,7 +206,7 @@ class DownloadsView(ctk.CTkFrame):
         self._url_entry.delete(0, "end")
         self._url_entry.insert(0, url)
         self._url_entry.focus_set()
-        self._schedule_preview()
+        self._schedule_preview_if_ready()
 
     def show_status_hint(self, text: str, *, reset_after_ms: int = 5000) -> None:
         """Temporary status message (e.g. after pasting URL from history)."""
@@ -239,7 +225,7 @@ class DownloadsView(ctk.CTkFrame):
             return
         self._url_entry.delete(0, "end")
         self._url_entry.insert(0, cleaned)
-        self._schedule_preview()
+        self._schedule_preview_if_ready()
         self._run_download_job_for_url(cleaned)
 
     def continue_queue_for_url(self, url: str) -> None:
@@ -254,6 +240,10 @@ class DownloadsView(ctk.CTkFrame):
         if cached and cached.title:
             self._now_playing_title = cached.title.strip()
         self._run_download_job_for_url(cleaned, queue_continue=True)
+
+    def _schedule_preview_if_ready(self) -> None:
+        if self._preview_panel is not None:
+            self._preview_panel.schedule_preview()
 
     def force_release_download_ui(self) -> None:
         """Recover when the worker finished but a terminal UI event was missed."""
@@ -283,14 +273,6 @@ class DownloadsView(ctk.CTkFrame):
         else:
             self._log_body.grid_remove()
             self._log_toggle_btn.configure(text="▶")
-
-    def _show_preview_panel(self, visible: bool) -> None:
-        if visible:
-            self._preview_frame.grid(row=0, column=0, sticky="ew")
-            self._preview_placeholder.grid_remove()
-        else:
-            self._preview_frame.grid_remove()
-            self._preview_placeholder.grid(row=0, column=0, sticky="ew")
 
     def _build_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
@@ -331,8 +313,15 @@ class DownloadsView(ctk.CTkFrame):
             **ENTRY_STYLE,
         )
         self._url_entry.grid(row=0, column=1, padx=(0, 8), sticky="ew")
-        self._url_entry.bind("<<Paste>>", lambda _e: self._schedule_preview())
-        self._url_entry.bind("<KeyRelease>", lambda _e: self._schedule_preview())
+        self._url_entry.bind("<<Paste>>", lambda _e: self._schedule_preview_if_ready())
+        self._url_entry.bind("<KeyRelease>", lambda _e: self._schedule_preview_if_ready())
+        self._preview_panel = DownloadsPreviewPanel(
+            self,
+            url_entry=self._url_entry,
+            event_queue=self._event_queue,
+            preview_cache=self._preview_cache,
+            is_downloading=lambda: self._is_downloading,
+        )
         self._clear_url_btn = ctk.CTkButton(
             url_outer,
             text="✕",
@@ -354,71 +343,10 @@ class DownloadsView(ctk.CTkFrame):
         mid.grid(row=2, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
         mid.grid_columnconfigure(0, weight=1)
 
-        self._preview_placeholder = ctk.CTkFrame(mid, **CARD_STYLE)
-        self._preview_placeholder.grid(row=0, column=0, sticky="ew")
-        ctk.CTkLabel(
-            self._preview_placeholder,
-            text="O preview do vídeo aparecerá aqui",
-            text_color=TEXT_MUTED,
-            font=ctk.CTkFont(size=12),
-        ).place(relx=0.5, rely=0.5, anchor="center")
+        assert self._preview_panel is not None
+        preview_card = self._preview_panel.build_into(mid)
 
-        self._preview_frame = ctk.CTkFrame(mid, **CARD_STYLE)
-        self._preview_frame.grid_remove()
-        self._preview_frame.grid_columnconfigure(0, weight=1)
-        self._mid = mid
-
-        thumb_wrap = ctk.CTkFrame(self._preview_frame, fg_color="transparent")
-        thumb_wrap.pack(fill="x", padx=12, pady=(12, 8))
-        self._thumb_label = ctk.CTkLabel(
-            thumb_wrap,
-            text="",
-            width=THUMB_DISPLAY_SIZE[0],
-            height=THUMB_DISPLAY_SIZE[1],
-            fg_color=("#2a2a2a", "#2a2a2a"),
-            corner_radius=6,
-        )
-        self._thumb_label.pack(anchor="w")
-        self._ensure_placeholder_image()
-        self._thumb_duration_label = ctk.CTkLabel(
-            thumb_wrap,
-            text="",
-            font=ctk.CTkFont(size=10, weight="bold"),
-            text_color=TEXT_PRIMARY,
-            fg_color=("#000000", "#000000"),
-            corner_radius=4,
-            width=44,
-            height=20,
-        )
-        self._thumb_duration_label.place(
-            x=THUMB_DISPLAY_SIZE[0] - 52, y=THUMB_DISPLAY_SIZE[1] - 28
-        )
-        self._preview_title_label = ctk.CTkLabel(
-            self._preview_frame,
-            text="",
-            anchor="w",
-            justify="left",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=TEXT_PRIMARY,
-        )
-        self._preview_title_label.pack(fill="x", padx=12, pady=(0, 4))
-        self._preview_subtitle_label = ctk.CTkLabel(
-            self._preview_frame,
-            text="",
-            anchor="w",
-            text_color=TEXT_SECONDARY,
-            font=ctk.CTkFont(size=12),
-        )
-        self._preview_subtitle_label.pack(fill="x", padx=12, pady=(0, 12))
-
-        ctk.CTkFrame(
-            self._preview_frame,
-            height=1,
-            fg_color=CARD_BORDER,
-            corner_radius=0,
-        ).pack(fill="x", padx=12, pady=(0, 12))
-
-        preview_opts = ctk.CTkFrame(self._preview_frame, fg_color="transparent")
+        preview_opts = ctk.CTkFrame(preview_card, fg_color="transparent")
         preview_opts.pack(fill="x", padx=12, pady=(0, 14))
         preview_opts.grid_columnconfigure(0, weight=1)
 
@@ -596,14 +524,12 @@ class DownloadsView(ctk.CTkFrame):
     def _on_scroll_wraplength(self) -> None:
         if self._scroll is None:
             return
-        if hasattr(self, "_queue_active_label"):
-            apply_wraplength_from_widget(
-                self._queue_active_label, self._scroll, pad=48, max_px=640
-            )
-        if hasattr(self, "_mid"):
-            apply_wraplength_from_widget(
-                self._preview_title_label, self._mid, pad=48, max_px=520
-            )
+        if self._preview_panel is not None and self._preview_panel.mid is not None:
+            title_lbl = self._preview_panel.preview_title_label
+            if title_lbl is not None:
+                apply_wraplength_from_widget(
+                    title_lbl, self._preview_panel.mid, pad=48, max_px=520
+                )
 
     def _on_footer_resize(self, event: Optional[object] = None) -> None:
         if self._btn_row is None:
@@ -646,206 +572,6 @@ class DownloadsView(ctk.CTkFrame):
             self._download_btn.grid(row=0, column=4, sticky="e")
         self.after_idle(self._sync_scroll_viewport)
 
-    def _schedule_preview(self) -> None:
-        if self._is_downloading:
-            return
-        if self._preview_after_id is not None:
-            self.after_cancel(self._preview_after_id)
-        self._preview_after_id = self.after(PREVIEW_DEBOUNCE_MS, self._run_preview_fetch)
-
-    def _run_preview_fetch(self) -> None:
-        self._preview_after_id = None
-        if self._is_downloading:
-            return
-
-        url = self._url_entry.get().strip()
-        if not url or not is_youtube_url(url):
-            logger.debug("preview ignorado: URL vazia ou não-YouTube")
-            self._clear_preview()
-            return
-
-        self._preview_request_id += 1
-        request_id = self._preview_request_id
-        logger.debug("preview agendado request_id=%s url=%s", request_id, url)
-        self._show_preview_loading()
-
-        def worker() -> None:
-            logger.debug("preview fetch iniciado request_id=%s", request_id)
-            preview = fetch_preview(url)
-            logger.debug(
-                "preview fetch fim request_id=%s erro=%s thumb=%s",
-                request_id,
-                bool(preview.error),
-                len(preview.thumbnail_bytes) if preview.thumbnail_bytes else 0,
-            )
-            self._event_queue.put(
-                ProgressEvent(
-                    event_type=EventType.PREVIEW_READY,
-                    preview=preview,
-                    preview_url=url,
-                    preview_request_id=request_id,
-                )
-            )
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _ensure_placeholder_image(self) -> ctk.CTkImage:
-        if self._placeholder_image is not None:
-            return self._placeholder_image
-        gray = Image.new("RGB", THUMB_DISPLAY_SIZE, (64, 64, 64))
-        self._placeholder_pil_light = gray.copy()
-        self._placeholder_pil_dark = gray.copy()
-        self._placeholder_image = ctk.CTkImage(
-            light_image=self._placeholder_pil_light,
-            dark_image=self._placeholder_pil_dark,
-            size=THUMB_DISPLAY_SIZE,
-        )
-        return self._placeholder_image
-
-    def _configure_thumb(self, image: Optional[ctk.CTkImage], text: str) -> None:
-        """Always attach a valid CTkImage (never None) to avoid Tcl pyimage errors."""
-        self._thumb_label.configure(
-            image=image if image is not None else self._ensure_placeholder_image(),
-            text=text,
-        )
-
-    def _release_preview_images(self) -> None:
-        self._ctk_preview_image = None
-        self._preview_pil_light = None
-        self._preview_pil_dark = None
-
-    def _detach_thumb_image(self) -> None:
-        """Point label at placeholder before GC of the previous CTkImage."""
-        self._configure_thumb(None, "")
-        self._release_preview_images()
-
-    @staticmethod
-
-    def _pil_rgb_from_bytes(data: bytes) -> Image.Image:
-        base = Image.open(io.BytesIO(data))
-        if base.mode == "RGBA":
-            background = Image.new("RGB", base.size, (40, 40, 40))
-            background.paste(base, mask=base.split()[3])
-            return background
-        return base.convert("RGB")
-
-    def _show_preview_loading(self) -> None:
-        clear_preview_cache()
-        self._show_preview_panel(True)
-        self._detach_thumb_image()
-        self._configure_thumb(None, "…")
-        self._preview_title_label.configure(text="Carregando preview…")
-        self._preview_subtitle_label.configure(text="")
-
-    def _clear_preview(self) -> None:
-        self._preview_request_id += 1
-        self._current_preview = None
-        clear_preview_cache()
-        self._detach_thumb_image()
-        self._configure_thumb(None, "")
-        self._preview_title_label.configure(text="")
-        self._preview_subtitle_label.configure(text="")
-        self._thumb_duration_label.configure(text="")
-        self._show_preview_panel(False)
-
-    def _apply_preview(
-        self,
-        preview: VideoPreview,
-        url: str,
-        request_id: Optional[int] = None,
-    ) -> None:
-        if request_id is not None and request_id != self._preview_request_id:
-            logger.warning(
-                "preview obsoleto ignorado: request_id=%s atual=%s",
-                request_id,
-                self._preview_request_id,
-            )
-            return
-        if self._url_entry.get().strip() != url:
-            logger.warning(
-                "preview URL divergente ignorado: esperado=%r campo=%r",
-                url,
-                self._url_entry.get().strip(),
-            )
-            return
-
-        if not preview.error:
-            self._preview_cache.put(preview)
-
-        if self._is_downloading:
-            return
-
-        logger.debug(
-            "apply_preview request_id=%s title=%r bytes=%s",
-            request_id,
-            preview.title[:50] if preview.title else "",
-            len(preview.thumbnail_bytes) if preview.thumbnail_bytes else 0,
-        )
-
-        if preview.error:
-            logger.error("preview erro: %s | url=%s", preview.error, url)
-            self._show_preview_panel(True)
-            self._detach_thumb_image()
-            self._configure_thumb(None, "?")
-            self._preview_title_label.configure(text="Preview indisponível")
-            self._preview_subtitle_label.configure(text=preview.error[:120])
-            return
-
-        self._current_preview = preview
-        self._show_preview_panel(True)
-        self._preview_title_label.configure(text=preview.title)
-
-        if preview.is_playlist and preview.playlist_count is not None:
-            self._preview_subtitle_label.configure(
-                text=f"Playlist · {preview.playlist_count} vídeos"
-            )
-        else:
-            channel = preview.uploader or "Canal"
-            duration = format_duration(preview.duration_seconds)
-            self._preview_subtitle_label.configure(
-                text=f"{channel} · {duration}" if duration else channel
-            )
-
-        duration_text = format_duration(preview.duration_seconds)
-        if duration_text:
-            self._thumb_duration_label.configure(text=duration_text)
-        else:
-            self._thumb_duration_label.configure(text="")
-
-        if preview.thumbnail_bytes:
-            try:
-                cache_id = request_id if request_id is not None else self._preview_request_id
-                cache_path = LOG_CACHE_DIR / f"preview_{cache_id}.jpg"
-                base = self._pil_rgb_from_bytes(preview.thumbnail_bytes)
-                base.save(cache_path, "JPEG", quality=90)
-
-                self._preview_pil_light = base.copy()
-                self._preview_pil_dark = base.copy()
-                self._ctk_preview_image = ctk.CTkImage(
-                    light_image=self._preview_pil_light,
-                    dark_image=self._preview_pil_dark,
-                    size=THUMB_DISPLAY_SIZE,
-                )
-                self._configure_thumb(self._ctk_preview_image, "")
-                logger.debug(
-                    "thumbnail exibida request_id=%s cache=%s size=%s",
-                    cache_id,
-                    cache_path,
-                    base.size,
-                )
-            except Exception:
-                logger.exception(
-                    "Falha ao exibir thumbnail request_id=%s url=%s",
-                    request_id,
-                    url,
-                )
-                self._detach_thumb_image()
-                self._configure_thumb(None, "?")
-        else:
-            logger.warning("preview sem thumbnail_bytes request_id=%s url=%s", request_id, url)
-            self._detach_thumb_image()
-            self._configure_thumb(None, "?")
-
     def _output_dir(self) -> str:
         path = self._get_app_settings().output_dir.strip()
         return path or str(DEFAULT_DOWNLOADS_DIR)
@@ -873,12 +599,12 @@ class DownloadsView(ctk.CTkFrame):
         if text:
             self._url_entry.delete(0, "end")
             self._url_entry.insert(0, text)
-            self._schedule_preview()
+            self._schedule_preview_if_ready()
 
     def _clear_url(self) -> None:
         self._url_entry.delete(0, "end")
-        if not self._is_downloading:
-            self._clear_preview()
+        if not self._is_downloading and self._preview_panel is not None:
+            self._preview_panel.clear()
 
     def _clear_log(self) -> None:
         self._log_box.configure(state="normal")
@@ -899,15 +625,6 @@ class DownloadsView(ctk.CTkFrame):
         state = "disabled" if busy else "normal"
         self._download_btn.configure(state=state)
         self._enqueue_btn.configure(state=state)
-
-    def _needs_network_expand(
-        self, kind: UrlKind, playlist_mode: Optional[PlaylistMode]
-    ) -> bool:
-        if kind == UrlKind.PLAYLIST:
-            return True
-        if kind == UrlKind.VIDEO_IN_PLAYLIST and playlist_mode == "full":
-            return True
-        return False
 
     def _resolve_urls_async(
         self,
@@ -943,9 +660,10 @@ class DownloadsView(ctk.CTkFrame):
         kind = classify_youtube_url(cleaned)
         playlist_mode: Optional[PlaylistMode] = None
         if kind == UrlKind.VIDEO_IN_PLAYLIST:
+            preview = self._preview_panel.current_preview if self._preview_panel else None
             count = (
-                self._current_preview.playlist_count
-                if self._current_preview and self._current_preview.is_playlist
+                preview.playlist_count
+                if preview and preview.is_playlist
                 else None
             )
             playlist_mode = ask_video_in_playlist_choice(
@@ -955,7 +673,7 @@ class DownloadsView(ctk.CTkFrame):
             if playlist_mode is None:
                 return
 
-        if self._needs_network_expand(kind, playlist_mode):
+        if needs_network_expand(kind, playlist_mode):
 
             def on_done(urls: Optional[list[str]], error: Optional[str]) -> None:
                 self._set_expand_busy(False)
@@ -978,17 +696,7 @@ class DownloadsView(ctk.CTkFrame):
         self._on_urls_resolved(urls, action=action)
 
     def _log_enqueue_result(self, added: int, total: int) -> None:
-        if total <= 1:
-            if added:
-                self._append_log("Adicionado à fila.")
-            else:
-                self._append_log("URL já está na fila.")
-            return
-        skipped = total - added
-        msg = f"Playlist: {added} vídeo(s) adicionados à fila."
-        if skipped:
-            msg += f" ({skipped} já estavam na fila.)"
-        self._append_log(msg)
+        self._append_log(format_enqueue_log(added, total))
 
     def _on_urls_resolved(
         self,
@@ -996,46 +704,37 @@ class DownloadsView(ctk.CTkFrame):
         *,
         action: Literal["download", "enqueue"],
     ) -> None:
-        if not urls:
+        plan = plan_resolved_urls(urls, action, is_downloading=self._is_downloading)
+        if plan.kind == ResolvedUrlPlanKind.NO_VIDEOS:
             self._append_log("Nenhum vídeo encontrado para enfileirar.")
             return
 
-        if len(urls) == 1:
-            if action == "enqueue":
-                added = self._on_enqueue_urls(urls)
-                self._log_enqueue_result(added, 1)
-                return
-            self._run_download_job_for_url(urls[0])
+        if plan.kind == ResolvedUrlPlanKind.ENQUEUE_ALL:
+            to_enqueue = plan.urls_to_enqueue
+            added = self._on_enqueue_urls(to_enqueue)
+            self._log_enqueue_result(added, len(to_enqueue))
             return
 
-        if action == "enqueue":
-            added = self._on_enqueue_urls(urls)
-            self._log_enqueue_result(added, len(urls))
+        if plan.kind == ResolvedUrlPlanKind.START_SINGLE:
+            self._run_download_job_for_url(plan.start_url)
             return
 
-        if self._is_downloading:
-            added = self._on_enqueue_urls(urls)
-            self._log_enqueue_result(added, len(urls))
-            return
-
-        rest = urls[1:]
+        rest = plan.urls_to_enqueue
         if rest:
             added_rest = self._on_enqueue_urls(rest)
             skipped = len(rest) - added_rest
-            msg = (
-                f"Playlist: {len(urls)} vídeos — iniciando o primeiro"
-                f", {added_rest} na fila"
+            self._append_log(
+                format_playlist_download_start_log(
+                    len(urls), added_rest=added_rest, skipped=skipped
+                )
             )
-            if skipped:
-                msg += f" ({skipped} já estavam na fila)"
-            self._append_log(msg + ".")
         else:
-            self._append_log(f"Playlist: 1 vídeo — iniciando.")
+            self._append_log(format_playlist_download_start_log(1, added_rest=0, skipped=0))
 
-        first = urls[0]
+        first = plan.start_url
         self._url_entry.delete(0, "end")
         self._url_entry.insert(0, first)
-        self._schedule_preview()
+        self._schedule_preview_if_ready()
         self._append_log(
             f"Iniciando: {truncate_text(first, QUEUE_URL_TRUNCATE)}"
         )
@@ -1069,12 +768,7 @@ class DownloadsView(ctk.CTkFrame):
 
     def _open_path_in_explorer(self, path: str) -> None:
         try:
-            if sys.platform == "win32":
-                os.startfile(path)
-            elif sys.platform == "darwin":
-                subprocess.run(["open", path], check=False)
-            else:
-                subprocess.run(["xdg-open", path], check=False)
+            open_path_in_explorer(path)
         except OSError as exc:
             logger.exception("Falha ao abrir pasta: %s", path)
             self._append_log(f"Erro ao abrir pasta: {exc}")
@@ -1113,123 +807,49 @@ class DownloadsView(ctk.CTkFrame):
             self.after_cancel(self._status_reset_after_id)
         self._status_reset_after_id = self.after(delay_ms, self._reset_download_status)
 
-    def _get_preview_title_for_log(self) -> Optional[str]:
-        if self._current_preview and self._current_preview.title:
-            return self._current_preview.title.strip()
-        title = self._preview_title_label.cget("text").strip()
-        if not title or title in ("Carregando preview…", "—", "Preview indisponível"):
+    def _current_preview(self) -> Optional[VideoPreview]:
+        if self._preview_panel is None:
             return None
-        return title
+        return self._preview_panel.current_preview
+
+    def _get_preview_title_for_log(self) -> Optional[str]:
+        preview = self._current_preview()
+        if preview and preview.title:
+            return preview.title.strip()
+        title_lbl = (
+            self._preview_panel.preview_title_label if self._preview_panel else None
+        )
+        if title_lbl is not None:
+            title = title_lbl.cget("text").strip()
+            if title and title not in (
+                "Carregando preview…",
+                "—",
+                "Preview indisponível",
+            ):
+                return title
+        return None
 
     def _get_preview_channel_name(self) -> str:
-        if self._current_preview and self._current_preview.uploader:
-            return self._current_preview.uploader.strip()
+        preview = self._current_preview()
+        if preview and preview.uploader:
+            return preview.uploader.strip()
         return ""
 
     def _get_preview_channel_url(self) -> str:
-        if self._current_preview and self._current_preview.channel_url:
-            return self._current_preview.channel_url.strip()
+        preview = self._current_preview()
+        if preview and preview.channel_url:
+            return preview.channel_url.strip()
         return ""
 
     def _get_preview_thumbnail_bytes(self) -> Optional[bytes]:
-        if self._current_preview and self._current_preview.thumbnail_bytes:
-            return self._current_preview.thumbnail_bytes
+        preview = self._current_preview()
+        if preview and preview.thumbnail_bytes:
+            return preview.thumbnail_bytes
         return None
 
     def _prefetch_history_meta(self, url: str) -> None:
         """Fetch per-video title/thumbnail for history and queue cards."""
         self._preview_cache.request([url])
-
-    def _record_history_entry(self, event: ProgressEvent) -> None:
-        filepath = event.filepath
-        if not filepath or not os.path.isfile(filepath):
-            return
-
-        source_url = self._url_entry.get().strip()
-        meta = self._preview_cache.get(source_url)
-        defer_disk = self._has_pending_queue()
-
-        def build_fields(preview: Optional[VideoPreview]) -> dict:
-            title = (event.title or "").strip()
-            if not title and preview and preview.title:
-                title = preview.title.strip()
-            if not title:
-                title = os.path.basename(filepath)
-            return {
-                "filepath": filepath,
-                "title": title,
-                "source_url": source_url,
-                "channel_name": (preview.uploader or "").strip() if preview else "",
-                "channel_url": (preview.channel_url or "").strip() if preview else "",
-                "thumbnail_bytes": (
-                    preview.thumbnail_bytes
-                    if preview and preview.thumbnail_bytes
-                    else None
-                ),
-            }
-
-        def resolve_preview() -> Optional[VideoPreview]:
-            if meta is not None and not meta.error:
-                return meta
-            if not source_url or not is_youtube_url(source_url):
-                return None
-            try:
-                fetched = fetch_preview(source_url)
-            except Exception:
-                logger.exception(
-                    "Metadados do historico (fallback): %s", source_url[:80]
-                )
-                return None
-            if fetched and not fetched.error:
-                self._preview_cache.put(fetched)
-                return fetched
-            return None
-
-        if defer_disk:
-
-            def worker() -> None:
-                fields = build_fields(resolve_preview())
-                self._on_add_history_async(
-                    fields["filepath"],
-                    fields["title"],
-                    fields["source_url"],
-                    channel_name=fields["channel_name"],
-                    channel_url=fields["channel_url"],
-                    thumbnail_bytes=fields["thumbnail_bytes"],
-                )
-
-            threading.Thread(target=worker, daemon=True).start()
-            return
-
-        fields = build_fields(meta if meta and not meta.error else None)
-        if fields["thumbnail_bytes"] is None and source_url and is_youtube_url(source_url):
-
-            def worker() -> None:
-                resolved = build_fields(resolve_preview())
-
-                def on_main(f: dict = resolved) -> None:
-                    self._on_add_history(
-                        f["filepath"],
-                        f["title"],
-                        f["source_url"],
-                        channel_name=f["channel_name"],
-                        channel_url=f["channel_url"],
-                        thumbnail_bytes=f["thumbnail_bytes"],
-                    )
-
-                self.after(0, on_main)
-
-            threading.Thread(target=worker, daemon=True).start()
-            return
-
-        self._on_add_history(
-            fields["filepath"],
-            fields["title"],
-            fields["source_url"],
-            channel_name=fields["channel_name"],
-            channel_url=fields["channel_url"],
-            thumbnail_bytes=fields["thumbnail_bytes"],
-        )
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
@@ -1300,7 +920,7 @@ class DownloadsView(ctk.CTkFrame):
             if url:
                 self._url_entry.delete(0, "end")
                 self._url_entry.insert(0, url)
-                self._schedule_preview()
+                self._schedule_preview_if_ready()
                 self._append_log(
                     f"Iniciando da fila: {truncate_text(url, QUEUE_URL_TRUNCATE)}"
                 )
@@ -1341,9 +961,8 @@ class DownloadsView(ctk.CTkFrame):
             self._prefetch_history_meta(cleaned)
 
         self._is_downloading = True
-        if self._preview_after_id is not None:
-            self.after_cancel(self._preview_after_id)
-            self._preview_after_id = None
+        if self._preview_panel is not None:
+            self._preview_panel.cancel_pending_schedule()
         if not queue_continue:
             self._set_controls_enabled(False)
         self._last_progress_percent = 0.0
@@ -1395,17 +1014,9 @@ class DownloadsView(ctk.CTkFrame):
         self._append_log("Pulando para o próximo da fila…")
 
     def handle_progress_event(self, event: ProgressEvent) -> None:
-        if event.event_type == EventType.PREVIEW_READY:
-            if event.preview is not None and event.preview_url:
-                self._apply_preview(
-                    event.preview,
-                    event.preview_url,
-                    request_id=event.preview_request_id,
-                )
-            return
-
-        if event.event_type == EventType.PREVIEW_CLEAR:
-            self._clear_preview()
+        if self._preview_panel is not None and self._preview_panel.handle_progress_event(
+            event
+        ):
             return
 
         if event.title:
@@ -1445,7 +1056,7 @@ class DownloadsView(ctk.CTkFrame):
                         self._last_download_filepath = event.filepath
                         self._update_open_file_button()
                         try:
-                            self._record_history_entry(event)
+                            self._on_record_history(event)
                         except Exception:
                             logger.exception("Falha ao registrar download no historico")
                     self._url_entry.focus_set()

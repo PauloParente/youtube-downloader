@@ -2,7 +2,6 @@
 
 import os
 import queue
-import subprocess
 import sys
 import threading
 import tkinter as tk
@@ -48,6 +47,13 @@ from youtube_downloader.core.logging_config import (
     install_ui_exception_logging,
 )
 from youtube_downloader.core.models import DownloadJob, EventType, ProgressEvent
+from youtube_downloader.core.queue_coordinator import (
+    is_terminal_download_event,
+    should_start_next_job,
+    should_sync_queue_structure,
+)
+from youtube_downloader.core.metadata import VideoPreview, fetch_preview, is_youtube_url
+from youtube_downloader.core.path_utils import open_path_in_explorer
 from youtube_downloader.core.preview_cache import PreviewCache
 from youtube_downloader.core.notifications import notify_download_complete
 from youtube_downloader.core.settings import AppSettings, load_settings, save_settings
@@ -235,6 +241,100 @@ class YoutubeDownloaderApp(ctk.CTk):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _record_history_from_download_event(self, event: ProgressEvent) -> None:
+        """Persist history after a successful download (owned by shell, not the view)."""
+        filepath = event.filepath
+        if not filepath or not os.path.isfile(filepath):
+            return
+        if self._downloads_view is None:
+            return
+
+        source_url = self._downloads_view.current_url
+        meta = self._preview_cache.get(source_url)
+        defer_disk = bool(self._download_queue.snapshot())
+
+        def build_fields(preview: Optional[VideoPreview]) -> dict:
+            title = (event.title or "").strip()
+            if not title and preview and preview.title:
+                title = preview.title.strip()
+            if not title:
+                title = os.path.basename(filepath)
+            return {
+                "filepath": filepath,
+                "title": title,
+                "source_url": source_url,
+                "channel_name": (preview.uploader or "").strip() if preview else "",
+                "channel_url": (preview.channel_url or "").strip() if preview else "",
+                "thumbnail_bytes": (
+                    preview.thumbnail_bytes
+                    if preview and preview.thumbnail_bytes
+                    else None
+                ),
+            }
+
+        def resolve_preview() -> Optional[VideoPreview]:
+            if meta is not None and not meta.error:
+                return meta
+            if not source_url or not is_youtube_url(source_url):
+                return None
+            try:
+                fetched = fetch_preview(source_url)
+            except Exception:
+                logger.exception(
+                    "Metadados do historico (fallback): %s", source_url[:80]
+                )
+                return None
+            if fetched and not fetched.error:
+                self._preview_cache.put(fetched)
+                return fetched
+            return None
+
+        if defer_disk:
+
+            def worker() -> None:
+                fields = build_fields(resolve_preview())
+                self._add_history_entry_async(
+                    fields["filepath"],
+                    fields["title"],
+                    fields["source_url"],
+                    channel_name=fields["channel_name"],
+                    channel_url=fields["channel_url"],
+                    thumbnail_bytes=fields["thumbnail_bytes"],
+                )
+
+            threading.Thread(target=worker, daemon=True).start()
+            return
+
+        fields = build_fields(meta if meta and not meta.error else None)
+        if fields["thumbnail_bytes"] is None and source_url and is_youtube_url(source_url):
+
+            def worker() -> None:
+                resolved = build_fields(resolve_preview())
+
+                def on_main(f: dict = resolved) -> None:
+                    self._add_history_entry(
+                        f["filepath"],
+                        f["title"],
+                        f["source_url"],
+                        channel_name=f["channel_name"],
+                        channel_url=f["channel_url"],
+                        thumbnail_bytes=f["thumbnail_bytes"],
+                    )
+
+                self.after(0, on_main)
+
+            threading.Thread(target=worker, daemon=True).start()
+            return
+
+        self._add_history_entry(
+            fields["filepath"],
+            fields["title"],
+            fields["source_url"],
+            channel_name=fields["channel_name"],
+            channel_url=fields["channel_url"],
+            thumbnail_bytes=fields["thumbnail_bytes"],
+        )
+
     def _open_history_folder(self, filepath: str) -> None:
         if os.path.isfile(filepath):
             folder = os.path.dirname(filepath)
@@ -404,8 +504,7 @@ class YoutubeDownloaderApp(ctk.CTk):
             on_start_download=self._run_download_job,
             on_cancel_download=self._downloader.cancel,
             on_persist_settings=self._persist_settings,
-            on_add_history=self._add_history_entry,
-            on_add_history_async=self._add_history_entry_async,
+            on_record_history=self._record_history_from_download_event,
             on_get_app_settings=lambda: self._settings,
             on_enqueue_url=self._enqueue_download_url,
             on_enqueue_urls=self._enqueue_download_urls,
@@ -561,12 +660,7 @@ class YoutubeDownloaderApp(ctk.CTk):
 
     def _open_path_in_explorer(self, path: str) -> None:
         try:
-            if sys.platform == "win32":
-                os.startfile(path)
-            elif sys.platform == "darwin":
-                subprocess.run(["open", path], check=False)
-            else:
-                subprocess.run(["xdg-open", path], check=False)
+            open_path_in_explorer(path)
         except OSError as exc:
             logger.exception("Falha ao abrir caminho: %s", path)
             if self._downloads_view is not None:
@@ -639,16 +733,22 @@ class YoutubeDownloaderApp(ctk.CTk):
                     EventType.CANCELLED,
                 ):
                     self._sync_now_playing_panel()
-                if event.event_type in (EventType.DONE, EventType.CANCELLED, EventType.ERROR):
-                    continuing_queue = False
-                    if self._downloads_view is not None and self._downloads_view.is_downloading:
-                        if event.event_type == EventType.CANCELLED:
-                            continuing_queue = (
-                                self._downloads_view.should_continue_queue_after_cancel()
-                            )
-                        elif event.event_type == EventType.DONE:
-                            continuing_queue = bool(self._get_queue_snapshot())
-                    if not continuing_queue:
+                if is_terminal_download_event(event.event_type):
+                    continue_after_cancel = False
+                    is_downloading = (
+                        self._downloads_view is not None
+                        and self._downloads_view.is_downloading
+                    )
+                    if is_downloading and event.event_type == EventType.CANCELLED:
+                        continue_after_cancel = (
+                            self._downloads_view.should_continue_queue_after_cancel()
+                        )
+                    if should_sync_queue_structure(
+                        event.event_type,
+                        is_downloading=is_downloading,
+                        queue_has_items=bool(self._get_queue_snapshot()),
+                        continue_after_cancel=continue_after_cancel,
+                    ):
                         self._sync_queue_structure()
 
             job = self._active_download_job
@@ -673,9 +773,13 @@ class YoutubeDownloaderApp(ctk.CTk):
                 self._start_next_queued_if_idle()
             elif event.event_type == EventType.CANCELLED:
                 self._active_download_job = None
-                if (
+                continue_after_cancel = (
                     self._downloads_view is not None
                     and self._downloads_view.should_continue_queue_after_cancel()
+                )
+                if should_start_next_job(
+                    event.event_type,
+                    continue_after_cancel=continue_after_cancel,
                 ):
                     self._start_next_queued_if_idle()
             elif event.event_type == EventType.ERROR:

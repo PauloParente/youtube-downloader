@@ -30,10 +30,13 @@ python -m pytest                  # testes
 main.py                           # launcher (insere src/ no path)
 src/youtube_downloader/
   config.py                       # constantes, QUALITY_FORMATS, APP_VERSION, PROJECT_ROOT
-  app.py                          # shell da janela (~500 linhas): nav, fila, worker, About
+  app.py                          # shell (~800 linhas): nav, fila, worker, histórico, About
   core/                           # sem dependência de Tk
     downloader.py                 # YoutubeDownloader, build_ytdl_opts, yt-dlp
     download_job_builder.py       # DownloadJob a partir de AppSettings + UI
+    download_url_flow.py          # plano enqueue/Baixar após resolver URLs (puro)
+    queue_coordinator.py          # política sync fila / próximo job após evento terminal
+    path_utils.py                 # abrir pasta/arquivo no SO
     metadata.py                   # preview (fetch_preview, VideoPreview)
     settings.py                   # AppSettings, load/save settings.json
     download_history.py           # history.json
@@ -46,7 +49,8 @@ src/youtube_downloader/
   ui/
     theme.py                      # cores e estilos de botões
     nav_sidebar.py                # sidebar Downloads / Fila / Biblioteca / Histórico / Configurações
-    downloads_view.py             # tela Downloads (URL, preview, log, + Fila, Baixar/Cancelar)
+    downloads_view.py             # tela Downloads (~1000 linhas): URL, opções, log, fila
+    downloads_preview.py          # preview debounced (extraído de downloads_view)
     queue_view.py                 # tela Fila (baixando agora + pendentes)
     settings_view.py              # página Configurações
     history_view.py               # página Histórico
@@ -80,7 +84,9 @@ flowchart TB
 ### Responsabilidades
 
 - **`app.py`**: janela principal, sidebar + navegação, `_poll_queue` → `_handle_event` (delega à `DownloadsView` e `QueueView`), `PreviewCache`, `_sync_queue_structure` / `update_card`, `_run_download_job` (thread + `YoutubeDownloader`), histórico/settings wiring, diálogo Sobre (sidebar), notificação ao `DONE`.
-- **`ui/downloads_view.py`**: URL, preview (debounce + worker), opções locais, pasta, log, **+ Fila**, **Baixar** / **Cancelar** no rodapé; `get_now_playing_meta()` para a tela Fila; `force_release_download_ui` se o evento terminal falhar.
+- **`ui/downloads_view.py`**: URL, opções locais, pasta, log, **+ Fila**, **Baixar** / **Cancelar**; orquestra download e fila via callbacks do shell; `get_now_playing_meta()` para a tela Fila.
+- **`ui/downloads_preview.py`**: preview (debounce + worker + `PREVIEW_*` na fila de eventos).
+- **`core/download_url_flow.py`**, **`core/queue_coordinator.py`**: regras puras testadas em `tests/`.
 - **`ui/queue_view.py`**: card *Baixando agora* (miniatura, título, barra, Cancelar/Pular) e card *Na fila* (lista, limpar, remover).
 - **`core/`**: lógica testável sem Tk; `build_ytdl_opts(job)` mapeia `DownloadJob` → opções yt-dlp.
 - **`ui/`** (demais views): componentes visuais; callbacks no `__init__` (`on_save`, `on_open_path`, `on_select`).
@@ -98,7 +104,7 @@ Nunca atualizar CustomTkinter a partir do worker.
 ## Fluxo de preview
 
 1. URL alterada → debounce (`PREVIEW_DEBOUNCE_MS`) → thread busca `fetch_preview`.
-2. Eventos `PREVIEW_LOADING` / `PREVIEW_READY` / `PREVIEW_CLEAR` na fila do shell; UI em `downloads_view.py`.
+2. Eventos `PREVIEW_LOADING` / `PREVIEW_READY` / `PREVIEW_CLEAR` na fila do shell; UI em `downloads_preview.py` (via `DownloadsView`).
 3. Thumbnails em `logs/cache/`; limpeza via `clear_preview_cache`.
 
 ## Implementado vs. pendente
@@ -162,12 +168,14 @@ Fluxo sugerido: implementar → `youtube-downloader-logging` (checklist) → `py
 
 1. ~~**Extrair `DownloadsView`**~~ — feito (`ui/downloads_view.py`).
 2. ~~**Ligar settings ao downloader**~~ — feito (`DownloadJob`, `build_ytdl_opts`, `build_download_job`).
+3. ~~**Fatiar `downloads_view` (preview, URL flow, fila, histórico)**~~ — `downloads_preview.py`, `download_url_flow.py`, `queue_coordinator.py`, histórico no `app`.
 
 ### Pode (baixa urgência)
 
-3. ~~Unificar mapas de qualidade~~ — rótulos em `config.py` (`QUALITY_DISPLAY_LABELS`); consumidos por `downloads_view` e `settings_view`.
-4. ~~Tipar `ProgressEvent.preview`~~ — feito (`Optional[VideoPreview]` em `models.py`).
-5. ~~Renomear `_show_preferences` → `_open_settings`~~ — feito em `app.py`.
+4. ~~Unificar mapas de qualidade~~ — rótulos em `config.py` (`QUALITY_DISPLAY_LABELS`); consumidos por `downloads_view` e `settings_view`.
+5. ~~Tipar `ProgressEvent.preview`~~ — feito (`Optional[VideoPreview]` em `models.py`).
+6. ~~Renomear `_show_preferences` → `_open_settings`~~ — feito em `app.py`.
+7. Extrair cards da fila para `ui/queue_cards.py` (opcional).
 
 ### Evitar
 

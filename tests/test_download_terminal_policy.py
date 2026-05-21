@@ -1,20 +1,18 @@
-"""Política de avanço da fila após eventos terminais (espelha app._handle_event)."""
+"""Backward-compatible imports for queue terminal policy tests."""
 
 from youtube_downloader.core.models import EventType
+from youtube_downloader.core.queue_coordinator import should_start_next_job
 
-
-def _should_advance_queue_after(event_type: EventType) -> bool:
-    """Contrato documentado em docs/ux-downloads-queue.md."""
-    return event_type in (EventType.DONE, EventType.CANCELLED)
+# Documented in docs/ux-downloads-queue.md — DONE/CANCELLED (skip) advance the queue.
 
 
 def test_done_advances_queue() -> None:
-    assert _should_advance_queue_after(EventType.DONE) is True
+    assert should_start_next_job(EventType.DONE, continue_after_cancel=False) is True
 
 
-def test_cancelled_advances_queue() -> None:
-    assert _should_advance_queue_after(EventType.CANCELLED) is True
+def test_cancelled_advances_queue_when_skip() -> None:
+    assert should_start_next_job(EventType.CANCELLED, continue_after_cancel=True) is True
 
 
 def test_error_does_not_advance_queue() -> None:
-    assert _should_advance_queue_after(EventType.ERROR) is False
+    assert should_start_next_job(EventType.ERROR, continue_after_cancel=False) is False

@@ -1,6 +1,6 @@
 # UX — Downloads e fila
 
-Especificação do comportamento da tela **Downloads**, da tela **Fila** na sidebar e da fila em memória. Implementação: `ui/downloads_view.py`, `ui/queue_view.py`, `app.py`, `core/download_queue.py`.
+Especificação do comportamento da tela **Downloads**, da tela **Fila** na sidebar e da fila em memória. Implementação: `ui/downloads_view.py`, `ui/downloads_preview.py`, `ui/queue_view.py`, `app.py`, `core/download_queue.py`, `core/download_url_flow.py`, `core/queue_coordinator.py`.
 
 ## Onde está cada coisa na UI
 
