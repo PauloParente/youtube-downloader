@@ -12,8 +12,13 @@ a = Analysis(
     [str(project_dir / "main.py")],
     pathex=[str(src_dir)],
     binaries=[],
-    datas=[],
-    hiddenimports=["PySide6", "shiboken6"],
+    datas=[
+        (
+            str(src_dir / "youtube_downloader" / "resources" / "icons"),
+            "youtube_downloader/resources/icons",
+        ),
+    ],
+    hiddenimports=["PySide6", "shiboken6", "PySide6.QtSvg"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

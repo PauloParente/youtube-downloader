@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 import yt_dlp
 
+from youtube_downloader.core.download_errors import humanize_ytdlp_error
 from youtube_downloader.core.logging_config import get_logger
 
 logger = get_logger("metadata")
@@ -185,5 +186,5 @@ def fetch_preview(url: str) -> VideoPreview:
             url=url,
             title="",
             thumbnail_bytes=None,
-            error=str(exc),
+            error=humanize_ytdlp_error(str(exc)),
         )

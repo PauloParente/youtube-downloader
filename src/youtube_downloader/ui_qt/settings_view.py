@@ -26,6 +26,16 @@ from youtube_downloader.config import (
     QUALITY_OPTIONS,
 )
 from youtube_downloader.core.settings import AppSettings
+from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
+from youtube_downloader.ui_qt.theme_tokens import PAGE_MARGINS
+from youtube_downloader.ui_qt.widgets import (
+    Card,
+    PageHeader,
+    PrimaryButton,
+    apply_page_margins,
+    field_label,
+    muted_label,
+)
 
 _LANGUAGE_OPTIONS = ["Português (Brasil)", "English"]
 _LANGUAGE_FROM_LABEL = {"Português (Brasil)": "pt-BR", "English": "en"}
@@ -66,76 +76,85 @@ class SettingsView(QWidget):
         scroll.setWidgetResizable(True)
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(24, 20, 24, 20)
+        apply_page_margins(layout)
 
-        layout.addWidget(QLabel("<b style='font-size:22px'>Configurações</b>"))
         layout.addWidget(
-            QLabel("Ajuste o comportamento do aplicativo para otimizar seu fluxo de trabalho.")
+            PageHeader(
+                "Configurações",
+                "Ajuste o comportamento do aplicativo para otimizar seu fluxo de trabalho.",
+            )
         )
 
-        general = self._card("⚙", "Geral", layout)
+        general = self._card("general", "Geral", layout)
         gl = general.layout()
-        gl.addWidget(QLabel("Pasta padrão de download"))
+        gl.addWidget(field_label("Pasta padrão de download"))
         path_row = QHBoxLayout()
         self._folder_entry = QLineEdit()
         self._folder_entry.setReadOnly(True)
         path_row.addWidget(self._folder_entry, stretch=1)
-        browse = QPushButton("📁  Procurar")
+        browse = QPushButton("Procurar")
+        icon_on_button(browse, "folder", size=18)
         browse.clicked.connect(self._browse_folder)
         path_row.addWidget(browse)
         gl.addLayout(path_row)
-        gl.addWidget(QLabel("Tema da interface"))
+        gl.addWidget(field_label("Tema da interface"))
         self._dark_check = QCheckBox("Modo escuro")
+        self._dark_check.setObjectName("switch")
         self._dark_check.setChecked(True)
         gl.addWidget(self._dark_check)
-        gl.addWidget(QLabel("Idioma das legendas"))
+        gl.addWidget(field_label("Idioma das legendas"))
         self._language_combo = QComboBox()
         self._language_combo.addItems(_LANGUAGE_OPTIONS)
         gl.addWidget(self._language_combo)
 
-        quality = self._card("HQ", "Qualidade e Formato", layout)
+        quality = self._card("quality", "Qualidade e Formato", layout)
         ql = quality.layout()
-        ql.addWidget(QLabel("Qualidade de Vídeo Padrão"))
+        ql.addWidget(field_label("Qualidade de Vídeo Padrão"))
         self._quality_combo = QComboBox()
         self._quality_combo.addItems(QUALITY_COMBO_VALUES)
         ql.addWidget(self._quality_combo)
-        ql.addWidget(QLabel("Formato de Vídeo Padrão"))
+        ql.addWidget(field_label("Formato de Vídeo Padrão"))
         self._video_format_combo = QComboBox()
         self._video_format_combo.addItems(_VIDEO_FORMAT_OPTIONS)
         self._video_format_combo.currentTextChanged.connect(self._on_video_format_changed)
         ql.addWidget(self._video_format_combo)
-        self._webm_hint = QLabel(
+        self._webm_hint = muted_label(
             "Para o reprodutor do Windows, prefira MP4 com perfil Compatível."
         )
         self._webm_hint.hide()
         ql.addWidget(self._webm_hint)
-        ql.addWidget(QLabel("Perfil de exportação"))
+        ql.addWidget(field_label("Perfil de exportação"))
         self._export_profile_combo = QComboBox()
         self._export_profile_combo.addItems(_EXPORT_PROFILE_OPTIONS)
         ql.addWidget(self._export_profile_combo)
-        ql.addWidget(QLabel("Qualidade de Áudio Padrão"))
+        ql.addWidget(field_label("Qualidade de Áudio Padrão"))
         self._audio_bitrate_combo = QComboBox()
         self._audio_bitrate_combo.addItems(_AUDIO_BITRATE_OPTIONS)
         ql.addWidget(self._audio_bitrate_combo)
         self._audio_only_check = QCheckBox("Modo somente áudio (MP3) por padrão")
+        self._audio_only_check.setObjectName("switch")
         ql.addWidget(self._audio_only_check)
 
-        advanced = self._card("◈", "Avançado", layout)
+        advanced = self._card("advanced", "Avançado", layout)
         al = advanced.layout()
-        al.addWidget(QLabel("Limite de Largura de Banda (KB/s)"))
+        al.addWidget(field_label("Limite de Largura de Banda (KB/s)"))
         self._bandwidth_entry = QLineEdit("0")
         al.addWidget(self._bandwidth_entry)
         self._notify_check = QCheckBox("Notificações no Sistema")
+        self._notify_check.setObjectName("switch")
         self._notify_check.setChecked(True)
         al.addWidget(self._notify_check)
         self._subtitles_check = QCheckBox("Download Automático de Legendas")
+        self._subtitles_check.setObjectName("switch")
         al.addWidget(self._subtitles_check)
-        al.addWidget(QLabel("Arquivo de cookies (cookies.txt)"))
+        al.addWidget(field_label("Arquivo de cookies (cookies.txt)"))
         cookies_row = QHBoxLayout()
         self._cookies_entry = QLineEdit()
         self._cookies_entry.setPlaceholderText("Caminho para cookies.txt (opcional)")
         cookies_row.addWidget(self._cookies_entry, stretch=1)
-        cookies_btn = QPushButton("📁")
+        cookies_btn = QPushButton()
+        cookies_btn.setObjectName("iconOnly")
+        icon_on_button(cookies_btn, "folder", size=18)
         cookies_btn.clicked.connect(self._browse_cookies)
         cookies_row.addWidget(cookies_btn)
         al.addLayout(cookies_row)
@@ -143,26 +162,38 @@ class SettingsView(QWidget):
         scroll.setWidget(content)
         outer.addWidget(scroll, stretch=1)
 
+        dock = QFrame()
+        dock.setObjectName("actionDock")
+        dock_l, _, dock_r, dock_b = PAGE_MARGINS
+        dock_layout = QVBoxLayout(dock)
+        dock_layout.setContentsMargins(dock_l, 12, dock_r, dock_b)
         btn_row = QHBoxLayout()
         restore = QPushButton("Restaurar padrões")
         restore.clicked.connect(self._restore_defaults)
         btn_row.addWidget(restore)
         btn_row.addStretch()
-        save_btn = QPushButton("Salvar alterações")
-        save_btn.setObjectName("primary")
+        save_btn = PrimaryButton("Salvar alterações")
         save_btn.clicked.connect(self._save)
         btn_row.addWidget(save_btn)
-        outer.addLayout(btn_row)
+        dock_layout.addLayout(btn_row)
+        outer.addWidget(dock)
 
-    def _card(self, icon: str, title: str, parent_layout: QVBoxLayout) -> QFrame:
-        card = QFrame()
-        card.setObjectName("card")
-        cl = QVBoxLayout(card)
-        cl.addWidget(QLabel(f"<span style='color:#007BFF'><b>{icon}  {title}</b></span>"))
+    def _card(self, icon_name: str, title: str, parent_layout: QVBoxLayout) -> QWidget:
+        card = Card()
+        header_row = QHBoxLayout()
+        icon_lbl = QLabel()
+        icon_lbl.setPixmap(themed_icon(icon_name, 20).pixmap(20, 20))
+        header_row.addWidget(icon_lbl)
+        title_lbl = QLabel(title)
+        title_lbl.setObjectName("cardSectionTitle")
+        header_row.addWidget(title_lbl)
+        header_row.addStretch()
+        card.body_layout.addLayout(header_row)
         body = QWidget()
         bl = QVBoxLayout(body)
         bl.setContentsMargins(0, 0, 0, 0)
-        cl.addWidget(body)
+        bl.setSpacing(12)
+        card.body_layout.addWidget(body)
         parent_layout.addWidget(card)
         return body
 

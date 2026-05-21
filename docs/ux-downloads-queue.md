@@ -6,10 +6,10 @@ Especificação do comportamento da tela **Downloads**, da tela **Fila** na side
 
 | Tela | Conteúdo |
 |------|----------|
-| **Downloads** | URL, preview (com somente áudio e qualidade abaixo do preview), log, **+ Fila**, **Baixar**, **Cancelar** (rodapé fixo) |
-| **Fila** (sidebar) | Card *Baixando agora*: miniatura, título, URL, status, barra, %, **Cancelar**, **Pular**; *Na fila*: cards (estilo Histórico) com miniatura, título, duração e **🗑** |
+| **Downloads** | Hero URL (validação visual, colar, **arrastar link**, + Fila, **Ver fila (N)**), preview (`EmptyState` vazio / skeleton / row), alerta de erro inline, barra **Vídeo \| Áudio** + qualidade, faixa de progresso com miniatura+título, drawer **Atividade** (compacto quando fechado), action dock (chip pasta destino, status humanizado, Baixar) |
+| **Fila** (sidebar) | Card *Baixando agora*: miniatura, título, URL, status, barra, %, **Cancelar**, **Pular**; *Na fila*: cards (estilo Histórico) com miniatura, título, duração e remover |
 
-A barra de progresso detalhada e a lista de pendentes **não** ficam mais no scroll de Downloads.
+A lista de pendentes fica na tela **Fila**. A faixa de progresso na Downloads complementa o card *Baixando agora* (cancelar na faixa durante o download).
 
 ## Modelo
 
@@ -27,6 +27,26 @@ Um único vídeo sem enfileirar = fila vazia na lista + **Baixar** no campo. Nã
 - **+ Fila** / **Baixar** com playlist no campo: expande em thread (“A obter vídeos da playlist…”); Baixar enfileira todos e inicia o primeiro pendente.
 - Vídeo único no campo: **Baixar** inicia direto (sem passar pela fila).
 - Cada job na fila é um vídeo (`noplaylist: true` no yt-dlp).
+
+## Erros amigáveis e feedback
+
+- Mensagens yt-dlp mapeadas em português via `core/download_errors.humanize_ytdlp_error` (log técnico mantido em **Atividade**).
+- Erro de download: status no dock + banner `#downloadAlert` acima do preview.
+- Faixa `#progressStrip`: miniatura, título, % ou modo indeterminado (playlist / preparar fila).
+
+## Atalhos (tela Downloads com foco)
+
+| Atalho | Ação |
+|--------|------|
+| `Ctrl+V` | Colar URL (global na janela) |
+| `Enter` | Baixar (se botão ativo; não dispara com foco no combo de qualidade) |
+| `Esc` | Cancelar download em curso; senão limpar URL |
+
+## Arrastar URL (drag-and-drop)
+
+- No campo hero da tela **Downloads**, aceita `text/uri-list` e `text/plain` (ex. arrastar link do Explorer).
+- Extrai a primeira URL YouTube (`core/text_utils.extract_url_from_drop_text` + `is_youtube_url`); preenche o campo e dispara o preview (mesmo fluxo que colar).
+- URLs não-YouTube ou texto sem link são ignorados.
 
 ## Antes (ocioso)
 
@@ -79,3 +99,4 @@ Notificação desktop: uma por DONE (se ativada em Configurações).
 6. Erro no primeiro → fila **não** avança sozinha.
 7. Remover itens com 🗑 durante download → pendentes somem; ativo continua.
 8. URL de playlist → Baixar → N itens na fila; sequência automática; histórico com uma entrada por vídeo.
+9. Arrastar link `youtube.com` ou `youtu.be` para o campo hero → URL preenchida e preview agendado.

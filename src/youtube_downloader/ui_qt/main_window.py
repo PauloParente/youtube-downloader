@@ -7,9 +7,16 @@ import threading
 from dataclasses import replace
 from typing import Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QApplication, QFrame, QMainWindow, QStackedWidget, QWidget
+from PySide6.QtCore import QEasingCurve, QEvent, QPointF, QPropertyAnimation, QRect, Qt
+from PySide6.QtGui import QKeySequence, QMouseEvent, QShortcut
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QMainWindow,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from youtube_downloader.config import (
     APP_TITLE,
@@ -17,6 +24,14 @@ from youtube_downloader.config import (
     WINDOW_MIN_HEIGHT,
     WINDOW_MIN_WIDTH,
     WINDOW_SIZE,
+)
+from youtube_downloader.ui_qt.frameless_window import (
+    ResizeEdge,
+    apply_mouse_resize,
+    hit_test_frame_edges,
+    setup_window_root,
+    try_native_resize_event,
+    update_resize_cursor,
 )
 from youtube_downloader.core.download_history import (
     DownloadHistoryEntry,
@@ -54,10 +69,14 @@ from youtube_downloader.ui_qt.downloads_view import DownloadsView
 from youtube_downloader.ui_qt.event_bridge import EventBridge
 from youtube_downloader.ui_qt.history_view import HistoryView
 from youtube_downloader.ui_qt.library_view import LibraryView
+from youtube_downloader.ui_qt.custom_title_bar import CustomTitleBar
+from youtube_downloader.ui_qt.nav_registry import DEFAULT_VIEW_ID, stack_index
+from youtube_downloader.ui_qt.nav_shortcuts import NAV_VIEW_SHORTCUTS
 from youtube_downloader.ui_qt.nav_sidebar import NavSidebar
 from youtube_downloader.ui_qt.queue_view import QueueView
 from youtube_downloader.ui_qt.settings_view import SettingsView
 from youtube_downloader.ui_qt.splash_screen import SplashScreen, center_on_screen, parse_window_size
+from youtube_downloader.ui_qt.widgets.status_banner import create_status_banner_slot
 from youtube_downloader.ui_qt.theme import apply_theme
 from youtube_downloader.ui_qt.util import run_on_main, schedule
 
@@ -67,6 +86,9 @@ logger = get_logger("app")
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
+        self.setWindowFlags(
+            Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
+        )
         self._settings = load_settings()
         apply_theme(QApplication.instance(), self._settings.appearance_mode)
 
@@ -78,6 +100,8 @@ class MainWindow(QMainWindow):
         self._preview_cache.on_updated(self._on_preview_cache_updated)
         self._history_entries: list[DownloadHistoryEntry] = load_history()
         self._download_thread: Optional[threading.Thread] = None
+        self._ffmpeg_banner_shown = False
+        self._view_fade_anim: Optional[QPropertyAnimation] = None
         self._active_download_job: Optional[DownloadJob] = None
         self._qthread = None
 
@@ -87,8 +111,12 @@ class MainWindow(QMainWindow):
         self._library_view: Optional[LibraryView] = None
         self._settings_view: Optional[SettingsView] = None
         self._sidebar: Optional[NavSidebar] = None
+        self._title_bar: Optional[CustomTitleBar] = None
         self._stack: Optional[QStackedWidget] = None
         self._ffmpeg_status_timer = False
+        self._resize_edge = ResizeEdge.NONE
+        self._resize_start_global: Optional[QPointF] = None
+        self._resize_start_geom: Optional[QRect] = None
 
         self._ensure_downloads_dir()
         LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -98,25 +126,124 @@ class MainWindow(QMainWindow):
         self._apply_settings(self._settings)
         self._check_ffmpeg()
 
+    def changeEvent(self, event) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange and self._title_bar is not None:
+            self._title_bar.sync_maximize_button()
+        if event.type() == QEvent.Type.WindowStateChange and self.isMaximized():
+            self._end_mouse_resize()
+
+    def nativeEvent(self, eventType, message):  # noqa: N802
+        handled = try_native_resize_event(self, eventType, message)
+        if handled is not None:
+            return handled
+        return super().nativeEvent(eventType, message)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._begin_mouse_resize(event):
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._resize_edge != ResizeEdge.NONE and self._resize_start_global is not None:
+            self._apply_mouse_resize(event.globalPosition())
+            event.accept()
+            return
+        update_resize_cursor(self, event.globalPosition())
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._resize_edge != ResizeEdge.NONE:
+            self._end_mouse_resize()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def _begin_mouse_resize(self, event: QMouseEvent) -> bool:
+        if (
+            event.button() != Qt.MouseButton.LeftButton
+            or self.isMaximized()
+            or not event.globalPosition()
+        ):
+            return False
+        pos = event.globalPosition()
+        edge = hit_test_frame_edges(
+            self.frameGeometry(),
+            int(pos.x()),
+            int(pos.y()),
+        )
+        if edge == ResizeEdge.NONE:
+            return False
+        self._resize_edge = edge
+        self._resize_start_global = pos
+        self._resize_start_geom = QRect(self.frameGeometry())
+        return True
+
+    def _apply_mouse_resize(self, global_pos: QPointF) -> None:
+        if self._resize_start_global is None or self._resize_start_geom is None:
+            return
+        apply_mouse_resize(
+            self,
+            self._resize_edge,
+            self._resize_start_global,
+            self._resize_start_geom,
+            global_pos,
+            min_width=WINDOW_MIN_WIDTH,
+            min_height=WINDOW_MIN_HEIGHT,
+        )
+
+    def _end_mouse_resize(self) -> None:
+        self._resize_edge = ResizeEdge.NONE
+        self._resize_start_global = None
+        self._resize_start_geom = None
+        self.unsetCursor()
+
     def _build_ui(self) -> None:
         central = QWidget()
+        setup_window_root(central)
         self.setCentralWidget(central)
         from PySide6.QtWidgets import QHBoxLayout
 
-        layout = QHBoxLayout(central)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        self._title_bar = CustomTitleBar(self)
+        root.addWidget(self._title_bar)
+
+        title_sep = QFrame()
+        title_sep.setObjectName("titleBarDivider")
+        title_sep.setFrameShape(QFrame.Shape.NoFrame)
+        title_sep.setFixedHeight(1)
+        root.addWidget(title_sep)
+
+        body = QWidget()
+        layout = QHBoxLayout(body)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        root.addWidget(body, stretch=1)
 
         self._sidebar = NavSidebar(self._on_nav_select, self._show_about)
         layout.addWidget(self._sidebar)
 
         sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setObjectName("sidebarDivider")
+        sep.setFrameShape(QFrame.Shape.NoFrame)
+        sep.setFixedWidth(1)
         layout.addWidget(sep)
 
+        content_col = QWidget()
+        content_layout = QVBoxLayout(content_col)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        self._status_banner_slot, self._status_banner = create_status_banner_slot()
+        content_layout.addWidget(self._status_banner_slot)
         self._stack = QStackedWidget()
-        layout.addWidget(self._stack, stretch=1)
+        content_layout.addWidget(self._stack, stretch=1)
+        layout.addWidget(content_col, stretch=1)
 
+        # QStackedWidget index order must match NAV_ITEMS in nav_registry.py
         self._downloads_view = DownloadsView(
             event_bridge=self._event_bridge,
             preview_cache=self._preview_cache,
@@ -133,6 +260,7 @@ class MainWindow(QMainWindow):
             pop_next_queue_url=self._pop_next_queue_url,
             on_sync_queue_structure=self._sync_queue_structure,
             on_sync_now_playing=self._sync_now_playing_panel,
+            on_open_queue=lambda: self._switch_view("queue"),
         )
         self._stack.addWidget(self._downloads_view)
 
@@ -173,11 +301,22 @@ class MainWindow(QMainWindow):
         self._settings_view.load_settings(self._settings)
         self._stack.addWidget(self._settings_view)
 
-        self._switch_view("download")
+        self._switch_view(DEFAULT_VIEW_ID)
+        self._update_nav_queue_badge()
 
     def _bind_shortcuts(self) -> None:
         QShortcut(QKeySequence("Ctrl+V"), self, self._on_ctrl_v)
         QShortcut(QKeySequence("Ctrl+,"), self, self._open_settings)
+        for view_id, sequence in NAV_VIEW_SHORTCUTS:
+            QShortcut(
+                QKeySequence(sequence),
+                self,
+                lambda vid=view_id: self._switch_view(vid),
+            )
+
+    def _update_nav_queue_badge(self) -> None:
+        if self._sidebar is not None:
+            self._sidebar.set_queue_badge(len(self._get_queue_snapshot()))
 
     def _on_nav_select(self, view_id: str) -> None:
         self._switch_view(view_id)
@@ -185,15 +324,16 @@ class MainWindow(QMainWindow):
     def _switch_view(self, view_id: str) -> None:
         if self._stack is None or self._sidebar is None:
             return
-        index = {
-            "download": 0,
-            "queue": 1,
-            "library": 2,
-            "history": 3,
-            "settings": 4,
-        }.get(view_id, 0)
+        index = stack_index(view_id)
+        if index is None:
+            logger.debug("Ignoring unknown nav view_id: %s", view_id)
+            return
+        previous = self._stack.currentWidget()
         self._stack.setCurrentIndex(index)
         self._sidebar.set_active(view_id)
+        current = self._stack.currentWidget()
+        if current is not None and current is not previous:
+            self._fade_in_view(current)
         if view_id == "history":
             self._refresh_history_from_disk()
             if self._history_view:
@@ -233,6 +373,7 @@ class MainWindow(QMainWindow):
         )
 
     def _sync_queue_structure(self) -> None:
+        self._update_nav_queue_badge()
         if self._queue_view:
             self._queue_view.refresh()
             self._sync_now_playing_panel()
@@ -321,7 +462,7 @@ class MainWindow(QMainWindow):
             thumbnail_path=thumb_path,
         )
         self._history_entries = add_history_entry(entry)
-        if self._history_view and self._sidebar and self._sidebar._active_id == "history":
+        if self._history_view and self._sidebar and self._sidebar.active_view_id() == "history":
             self._history_view.set_entries(self._history_entries)
 
     def _add_history_entry_async(self, **kwargs) -> None:
@@ -354,7 +495,7 @@ class MainWindow(QMainWindow):
                 if (
                     self._history_view
                     and self._sidebar
-                    and self._sidebar._active_id == "history"
+                    and self._sidebar.active_view_id() == "history"
                 ):
                     self._history_view.set_entries(entries)
 
@@ -438,9 +579,7 @@ class MainWindow(QMainWindow):
         cleaned = url.strip()
         if not cleaned:
             return
-        self._switch_view("download")
-        if self._sidebar:
-            self._sidebar.set_active("download")
+        self._switch_view(DEFAULT_VIEW_ID)
         if self._downloads_view:
             self._downloads_view.set_url_and_focus(cleaned)
             self._downloads_view.show_status_hint(
@@ -493,20 +632,43 @@ class MainWindow(QMainWindow):
     def _ensure_downloads_dir(self) -> None:
         DEFAULT_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
+    def _fade_in_view(self, widget: QWidget) -> None:
+        from PySide6.QtWidgets import QGraphicsOpacityEffect
+
+        effect = QGraphicsOpacityEffect(widget)
+        widget.setGraphicsEffect(effect)
+        anim = QPropertyAnimation(effect, b"opacity", self)
+        anim.setDuration(150)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._view_fade_anim = anim
+
+        def _cleanup() -> None:
+            widget.setGraphicsEffect(None)
+
+        anim.finished.connect(_cleanup)
+        anim.start()
+
     def _check_ffmpeg(self) -> None:
-        if is_bundled_ffmpeg():
+        if self._ffmpeg_banner_shown or is_bundled_ffmpeg():
             return
         if YoutubeDownloader.ffmpeg_available():
-            self._show_temporary_status(
-                "Aviso: FFmpeg do sistema. Para distribuir, use .\\build.ps1."
+            self._status_banner.show_message(
+                "Aviso: FFmpeg do sistema. Para distribuir o app, use .\\build.ps1."
             )
-            return
-        self._show_temporary_status(
-            "Erro: FFmpeg não encontrado. Use build.ps1 ou instale no PATH."
-        )
+        else:
+            self._status_banner.show_message(
+                "FFmpeg não encontrado. Use build.ps1 ou instale FFmpeg no PATH."
+            )
+        self._ffmpeg_banner_shown = True
 
     def _apply_settings(self, settings: AppSettings) -> None:
         apply_theme(QApplication.instance(), settings.appearance_mode)
+        if self._title_bar is not None:
+            self._title_bar.refresh_control_icons()
+        if self._sidebar is not None:
+            self._sidebar.refresh_theme()
         if self._downloads_view:
             self._downloads_view.apply_settings(settings)
         if self._settings_view:
@@ -521,6 +683,7 @@ class MainWindow(QMainWindow):
             output_dir=collected.output_dir,
             quality=collected.quality,
             audio_only=collected.audio_only,
+            activity_log_expanded=collected.activity_log_expanded,
         )
         save_settings(self._settings)
 
@@ -644,6 +807,7 @@ def run() -> None:
     logger.info("Aplicativo iniciado (PySide6)")
 
     app = QApplication.instance() or QApplication([])
+    app.setStyle("Fusion")
     splash = SplashScreen()
     splash.show()
     app.processEvents()

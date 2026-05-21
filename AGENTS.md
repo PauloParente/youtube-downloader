@@ -48,7 +48,10 @@ src/youtube_downloader/
     text_utils.py                 # truncate, strip_ansi
   ui_qt/
     main_window.py                # shell: nav, fila, worker QThread, histórico, About
-    theme.py                      # QSS + paleta dark/light
+    theme_tokens.py               # cores, espaçamento, tipografia
+    theme.py                      # QSS + apply_theme (Fusion)
+    widgets/                      # Card, PageHeader, botões, ThumbnailLabel
+    icons.py                      # SVG embutidos
     nav_sidebar.py                # sidebar
     downloads_view.py             # tela Downloads
     downloads_preview.py          # preview debounced
@@ -57,6 +60,7 @@ src/youtube_downloader/
     history_view.py               # Histórico
     download_worker.py            # QThread + signals
     event_bridge.py               # ProgressEvent → Qt main thread
+  resources/icons/                # SVG (PyInstaller datas)
 tests/                            # pytest (incl. test_download_opts.py)
 ```
 
@@ -188,7 +192,7 @@ Fluxo sugerido: implementar → `youtube-downloader-logging` (checklist) → `py
 2. Extrair código, rodar `pytest`, depois evoluir.
 3. Ao extrair função pura de `core/` ou views, adicionar teste em `tests/` (ex.: `test_download_opts.py` para `build_ytdl_opts`).
 4. Novas telas: arquivo em `ui/` + entrada em `NavSidebar.ITEMS` + `_view_frames` em `app.py`.
-5. Estilos em `ui_qt/theme.py` (QSS); evitar cores hardcoded fora do tema.
+5. Design system: [`docs/design-system.md`](docs/design-system.md), `ui_qt/theme_tokens.py`, `ui_qt/theme.py`, `ui_qt/widgets/`; evitar cores hardcoded fora do tema.
 
 Ver regra [`.cursor/rules/refactoring.mdc`](.cursor/rules/refactoring.mdc).
 

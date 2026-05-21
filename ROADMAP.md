@@ -54,7 +54,7 @@ Itens **não** implementados ou só parcialmente.
 |------|----------------|------------------------|
 | **Fila de downloads (UI)** | Lista, remover, limpar; spec em [docs/ux-downloads-queue.md](docs/ux-downloads-queue.md) | Persistir fila; URL editável ao enfileirar durante download; *Parar tudo* |
 | **Biblioteca** | Lista + filtro por nome; botão Abrir arquivo | Abrir pasta de destino, miniaturas ou metadados opcionais |
-| **Arrastar URL** | Não feito | Drag-and-drop (ex. `tkinterdnd2`); validar Windows e Linux |
+| **Arrastar URL** | Feito (PySide6, campo hero Downloads) | Validar Linux se necessário |
 | **MKV** | Reconhecido no scan; não é opção de merge | Estender `video_format` + testes FFmpeg |
 | **Idioma da interface (i18n)** | `language` só afeta legendas no yt-dlp | i18n completo ou manter só “idioma das legendas” |
 | **Runtime JS (Deno)** | Documentado no README | Aviso na UI quando yt-dlp precisar de challenge solver |
@@ -72,7 +72,7 @@ Itens **não** implementados ou só parcialmente.
 
 1. ~~Fila com lista visível~~ (feito)
 2. Biblioteca: **abrir pasta** de destino e polish da listagem
-3. Drag-and-drop de URL
+3. ~~Drag-and-drop de URL~~ (feito)
 4. MKV e demais formatos, se houver demanda
 5. Aviso na UI para runtime JS (Deno), se yt-dlp exigir
 

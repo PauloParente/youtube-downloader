@@ -28,6 +28,7 @@ from youtube_downloader.config import (
 )
 from youtube_downloader.core.ffmpeg_utils import find_ffmpeg_dir, is_bundled_ffmpeg
 from youtube_downloader.core.text_utils import truncate_text
+from youtube_downloader.ui_qt.widgets import GhostButton, PrimaryButton
 
 
 def _build_about_text() -> str:
@@ -69,6 +70,11 @@ def _build_about_text() -> str:
             "Atalhos de teclado",
             "  Ctrl+V — colar URL na tela Downloads",
             "  Ctrl+, — abrir Configurações",
+            "  Ctrl+1 — Downloads",
+            "  Ctrl+2 — Fila",
+            "  Ctrl+3 — Biblioteca",
+            "  Ctrl+4 — Histórico",
+            "  Ctrl+5 — Configurações",
         ]
     )
 
@@ -87,8 +93,7 @@ def show_about_dialog(
     header = QHBoxLayout()
     header.addWidget(QLabel("<b>Sobre</b>"))
     header.addStretch()
-    close_hdr = QPushButton("✕")
-    close_hdr.setObjectName("ghost")
+    close_hdr = GhostButton("✕")
     close_hdr.clicked.connect(dialog.close)
     header.addWidget(close_hdr)
     layout.addLayout(header)
@@ -106,8 +111,7 @@ def show_about_dialog(
     gh_btn.clicked.connect(lambda: webbrowser.open(GITHUB_REPO_URL))
     buttons.addWidget(gh_btn)
     buttons.addStretch()
-    ok_btn = QPushButton("OK")
-    ok_btn.setObjectName("primary")
+    ok_btn = PrimaryButton("OK")
     ok_btn.clicked.connect(dialog.accept)
     buttons.addWidget(ok_btn)
     layout.addLayout(buttons)
