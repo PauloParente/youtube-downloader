@@ -248,6 +248,22 @@ QPushButton#segment:hover:!checked {{
     background-color: {p.btn_secondary_hover};
     color: {p.text_primary};
 }}
+QPushButton#appearanceToggle {{
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    min-width: 0;
+    min-height: 0;
+    max-width: 40px;
+    max-height: 40px;
+}}
+QPushButton#appearanceToggle:hover {{
+    background-color: {p.btn_secondary};
+    border-radius: {RADIUS_BUTTON}px;
+}}
+QPushButton#appearanceToggle:pressed {{
+    background-color: {p.btn_secondary_hover};
+}}
 QPushButton#primaryOutline {{
     background-color: transparent;
     color: {ACCENT};
@@ -360,6 +376,8 @@ QPushButton#nav {{
     padding: 0 8px 0 12px;
     border: none;
     border-radius: 0;
+    min-height: 0;
+    max-height: 40px;
 }}
 QPushButton#nav[navActive="true"] {{
     color: {ACCENT};
