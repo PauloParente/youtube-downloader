@@ -5,8 +5,6 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Optional
 
-import yt_dlp
-
 from youtube_downloader.core.download_errors import humanize_ytdlp_error
 from youtube_downloader.core.logging_config import get_logger
 
@@ -88,7 +86,7 @@ def _entry_has_details(entry: dict[str, Any]) -> bool:
 
 
 def _resolve_first_entry(
-    ydl: yt_dlp.YoutubeDL, info: dict[str, Any]
+    ydl: Any, info: dict[str, Any]
 ) -> tuple[dict[str, Any], bool, Optional[int], Optional[str]]:
     entries = info.get("entries")
     if not entries:
@@ -131,6 +129,8 @@ def fetch_preview(url: str) -> VideoPreview:
     }
 
     try:
+        import yt_dlp
+
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
             if not info:

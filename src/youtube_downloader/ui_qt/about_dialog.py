@@ -6,7 +6,6 @@ import sys
 import webbrowser
 from collections.abc import Callable
 
-import yt_dlp
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -39,6 +38,12 @@ def _build_about_text() -> str:
         from PySide6 import __version__ as qt_version
     except ImportError:
         qt_version = "?"
+    try:
+        import yt_dlp
+
+        ytdlp_version = yt_dlp.version.__version__
+    except Exception:
+        ytdlp_version = "?"
     if is_bundled_ffmpeg():
         ffmpeg_line = "FFmpeg: embutido (build .exe) ou pasta do app"
     else:
@@ -59,7 +64,7 @@ def _build_about_text() -> str:
             "Ambiente",
             f"  Python {python_version}",
             f"  PySide6 {qt_version}",
-            f"  yt-dlp {yt_dlp.version.__version__}",
+            f"  yt-dlp {ytdlp_version}",
             f"  {ffmpeg_line}",
             f"  Modo: {run_mode}",
             "",

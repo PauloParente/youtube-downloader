@@ -8,9 +8,12 @@ import threading
 from collections.abc import Callable
 from typing import Optional
 
-from PIL import Image
+from typing import TYPE_CHECKING
 
 from youtube_downloader.core.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from PIL import Image
 from youtube_downloader.core.metadata import VideoPreview, fetch_preview, is_youtube_url
 
 logger = get_logger(__name__)
@@ -20,6 +23,8 @@ _DEFAULT_WORKERS = 3
 
 
 def pil_rgb_from_bytes(data: bytes) -> Image.Image:
+    from PIL import Image
+
     base = Image.open(io.BytesIO(data))
     if base.mode == "RGBA":
         background = Image.new("RGB", base.size, (40, 40, 40))
@@ -29,6 +34,8 @@ def pil_rgb_from_bytes(data: bytes) -> Image.Image:
 
 
 def prepare_card_thumb(preview: VideoPreview) -> Optional[Image.Image]:
+    from PIL import Image
+
     if not preview.thumbnail_bytes:
         return None
     try:

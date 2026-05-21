@@ -39,7 +39,6 @@ class LibraryView(QWidget):
         self._on_open_path = on_open_path
         self._files: list[LibraryFile] = []
         self._build_ui()
-        self.refresh()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)

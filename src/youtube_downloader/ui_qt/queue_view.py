@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from collections.abc import Callable
 from typing import Optional
 
-from PIL import Image
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
@@ -60,7 +59,7 @@ class QueueView(QWidget):
         *,
         get_queue_snapshot: Callable[[], list[str]],
         get_cached_preview: Callable[[str], Optional[VideoPreview]],
-        get_card_thumb: Callable[[str], Optional[Image.Image]],
+        get_card_thumb: Callable[[str], Optional[object]],
         is_preview_pending: Callable[[str], bool],
         on_remove_queue_at: Callable[[int], None],
         on_cancel_download: Callable[[], None],

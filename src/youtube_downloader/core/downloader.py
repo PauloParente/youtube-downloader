@@ -7,8 +7,6 @@ import threading
 import time
 from typing import Callable, Iterable, Optional
 
-import yt_dlp
-
 from youtube_downloader.config import AUDIO_FORMAT, AUDIO_POSTPROCESSORS
 from youtube_downloader.core.format_selectors import build_video_format_string
 from youtube_downloader.core.download_job_builder import subtitle_languages_for_ui_language
@@ -23,6 +21,12 @@ from youtube_downloader.core.text_utils import strip_ansi, truncate_text
 logger = get_logger("downloader")
 
 _PROGRESS_THROTTLE_SEC = 0.4
+
+
+def _yt_dlp():
+    import yt_dlp
+
+    return yt_dlp
 
 def _merge_status_message(job: DownloadJob) -> str:
     if job.audio_only:
@@ -209,7 +213,7 @@ class YoutubeDownloader:
         """Registra format_id/height escolhidos pelo seletor yt-dlp (diagnóstico)."""
         probe_opts = {**opts, "quiet": True, "no_warnings": True}
         try:
-            with yt_dlp.YoutubeDL(probe_opts) as ydl:
+            with _yt_dlp().YoutubeDL(probe_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
         except Exception as exc:
             logger.warning("Não foi possível inspecionar formatos: %s", exc)
@@ -290,7 +294,7 @@ class YoutubeDownloader:
         try:
             if not job.audio_only:
                 self._log_selected_formats(job.url, opts)
-            with yt_dlp.YoutubeDL(opts) as ydl:
+            with _yt_dlp().YoutubeDL(opts) as ydl:
                 ydl.download([job.url])
             if self._cancel.is_set():
                 self._emit_cancelled(
