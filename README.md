@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/PauloParente/youtube-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/PauloParente/youtube-downloader/actions/workflows/ci.yml)
 
-Aplicativo desktop em Python para baixar vídeos e playlists do YouTube, com interface gráfica em CustomTkinter.
+Aplicativo desktop em Python para baixar vídeos e playlists do YouTube, com interface gráfica em PySide6 (Qt).
 
 ## Requisitos
 
@@ -15,7 +15,7 @@ Aplicativo desktop em Python para baixar vídeos e playlists do YouTube, com int
 ### Para desenvolvimento (rodar com Python)
 
 - Python 3.10 ou superior
-- **Tkinter** (interface gráfica): vem com o instalador oficial no Windows; no Linux instale o pacote do sistema (veja abaixo)
+- **PySide6** (interface gráfica): instalado via `pip` com `requirements-lock.txt` (não precisa de Tkinter no sistema)
 - **FFmpeg** no PATH (obrigatório para vídeo/MP3 com merge)
   - **Windows:** PATH, `%LOCALAPPDATA%\ffmpeg`, ou `.\build.ps1` uma vez → `vendor\ffmpeg\bin`
   - **Linux:** ex. `sudo dnf install ffmpeg` (Fedora), `sudo apt install ffmpeg` (Debian/Ubuntu)
@@ -27,14 +27,14 @@ git clone https://github.com/PauloParente/youtube-downloader.git
 cd youtube-downloader
 ```
 
-Instale dependências de sistema no **Linux** antes do venv (Tk + FFmpeg):
+Instale **FFmpeg** no sistema antes do venv (Linux):
 
-| Distro | Tkinter | FFmpeg |
-|--------|---------|--------|
-| Fedora / Bazzite (rpm-ostree) | `rpm-ostree install python3-tkinter` (reboot) | `rpm-ostree install ffmpeg` ou equivalente |
-| Debian / Ubuntu | `sudo apt install python3-tk python3-venv` | `sudo apt install ffmpeg` |
+| Distro | FFmpeg |
+|--------|--------|
+| Fedora / Bazzite (rpm-ostree) | `rpm-ostree install ffmpeg` ou equivalente |
+| Debian / Ubuntu | `sudo apt install ffmpeg` |
 
-No **Windows**, Tkinter já costuma vir com o Python; FFmpeg: PATH ou `build.ps1` (abaixo).
+No **Windows**, FFmpeg: PATH ou `build.ps1` (abaixo).
 
 ### Windows (PowerShell)
 
@@ -175,7 +175,7 @@ Use este software apenas para conteúdo que você tem direito de baixar. Respeit
 
 ## Solução de problemas
 
-- **`ModuleNotFoundError: No module named '_tkinter'` (Linux):** instale o pacote Tk do sistema (`python3-tk` / `python3-tkinter`) e use o mesmo `python3` para criar o venv. Em Fedora Atomic pode ser necessário `rpm-ostree install python3-tkinter` e reiniciar.
+- **`ModuleNotFoundError: No module named 'PySide6'`:** ative o venv e execute `pip install -r requirements-lock.txt`.
 - **FFmpeg não encontrado (versão .exe):** regenere com `.\build.ps1` e confira se existe `dist\YouTubeDownloader\ffmpeg\ffmpeg.exe` ao lado do executável.
 - **FFmpeg não encontrado (desenvolvimento):** instale no PATH; no Windows pode usar `.\build.ps1` para popular `vendor\ffmpeg\bin`; no Linux use o gerenciador de pacotes da distro.
 - **Download falha sem motivo claro:** atualize dependências com `.\update-deps.ps1` ou `pip install -U yt-dlp`

@@ -1,4 +1,4 @@
-from youtube_downloader.ui.layout_utils import clamp_wraplength
+from youtube_downloader.core.layout_utils import clamp_wraplength
 
 
 def test_clamp_wraplength_within_bounds() -> None:

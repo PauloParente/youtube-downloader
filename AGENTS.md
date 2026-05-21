@@ -7,7 +7,7 @@ Manual de arquitetura e convenções para Cursor, copilotas e contribuidores. Le
 | Camada | Tecnologia |
 |--------|------------|
 | Linguagem | Python 3.10+ |
-| UI | CustomTkinter + tkinter |
+| UI | PySide6 (Qt) — pacote `ui_qt/` |
 | Download | yt-dlp |
 | Imagens | Pillow |
 | Mídia | FFmpeg (PATH, `%LOCALAPPDATA%\ffmpeg`, `vendor/ffmpeg` ou embutido no `.exe`) |
@@ -30,8 +30,8 @@ python -m pytest                  # testes
 main.py                           # launcher (insere src/ no path)
 src/youtube_downloader/
   config.py                       # constantes, QUALITY_FORMATS, APP_VERSION, PROJECT_ROOT
-  app.py                          # shell (~800 linhas): nav, fila, worker, histórico, About
-  core/                           # sem dependência de Tk
+  app.py                          # entrada fina: `run()` → ui_qt/main_window.py
+  core/                           # sem dependência de Qt/Tk
     downloader.py                 # YoutubeDownloader, build_ytdl_opts, yt-dlp
     download_job_builder.py       # DownloadJob a partir de AppSettings + UI
     download_url_flow.py          # plano enqueue/Baixar após resolver URLs (puro)
@@ -46,14 +46,17 @@ src/youtube_downloader/
     logging_config.py             # logs em logs/
     preview_cache.py              # cache + prefetch de metadados (fila/cards)
     text_utils.py                 # truncate, strip_ansi
-  ui/
-    theme.py                      # cores e estilos de botões
-    nav_sidebar.py                # sidebar Downloads / Fila / Biblioteca / Histórico / Configurações
-    downloads_view.py             # tela Downloads (~1000 linhas): URL, opções, log, fila
-    downloads_preview.py          # preview debounced (extraído de downloads_view)
-    queue_view.py                 # tela Fila (baixando agora + pendentes)
-    settings_view.py              # página Configurações
-    history_view.py               # página Histórico
+  ui_qt/
+    main_window.py                # shell: nav, fila, worker QThread, histórico, About
+    theme.py                      # QSS + paleta dark/light
+    nav_sidebar.py                # sidebar
+    downloads_view.py             # tela Downloads
+    downloads_preview.py          # preview debounced
+    queue_view.py                 # tela Fila
+    settings_view.py              # Configurações
+    history_view.py               # Histórico
+    download_worker.py            # QThread + signals
+    event_bridge.py               # ProgressEvent → Qt main thread
 tests/                            # pytest (incl. test_download_opts.py)
 ```
 
@@ -63,43 +66,39 @@ Dados locais na **raiz do projeto** (dev) ou ao lado do `.exe` (dist): `settings
 
 ```mermaid
 flowchart TB
-  main[main.py] --> app[YoutubeDownloaderApp]
-  app --> nav[NavSidebar]
-  app --> settings[SettingsView]
-  app --> history[HistoryView]
-  app --> downloads[DownloadsView]
-  app --> queueView[QueueView]
-  app --> eventQ[queue.Queue]
-  app --> dl[YoutubeDownloader]
+  main[main.py] --> run[app.run]
+  run --> mw[MainWindow QMainWindow]
+  mw --> nav[NavSidebar]
+  mw --> stack[QStackedWidget]
+  stack --> downloads[DownloadsView]
+  stack --> queueView[QueueView]
+  mw --> bridge[EventBridge]
+  mw --> worker[DownloadWorker QThread]
+  worker -->|Signal ProgressEvent| bridge
+  bridge --> mw
+  worker --> dl[YoutubeDownloader]
   downloads --> meta[fetch_preview]
-  downloads -->|"on_start_download"| app
-  eventQ -->|"handle_progress_event"| downloads
-  eventQ -->|"apply_progress_event"| queueView
   dl --> ytdlp[yt-dlp]
-  dl --> ffmpeg[ffmpeg_utils]
-  settings --> settFile[settings.json]
-  history --> histFile[history.json]
 ```
 
 ### Responsabilidades
 
-- **`app.py`**: janela principal, sidebar + navegação, `_poll_queue` → `_handle_event` (delega à `DownloadsView` e `QueueView`), `PreviewCache`, `_sync_queue_structure` / `update_card`, `_run_download_job` (thread + `YoutubeDownloader`), histórico/settings wiring, diálogo Sobre (sidebar), notificação ao `DONE`.
-- **`ui/downloads_view.py`**: URL, opções locais, pasta, log, **+ Fila**, **Baixar** / **Cancelar**; orquestra download e fila via callbacks do shell; `get_now_playing_meta()` para a tela Fila.
-- **`ui/downloads_preview.py`**: preview (debounce + worker + `PREVIEW_*` na fila de eventos).
+- **`ui_qt/main_window.py`**: janela principal, sidebar + `QStackedWidget`, `EventBridge.progress` → `_handle_event`, `PreviewCache`, fila, `_run_download_job` via `start_download_thread`, histórico/settings, Sobre, notificação ao `DONE`.
+- **`ui_qt/downloads_view.py`**: URL, opções, log, **+ Fila**, **Baixar** / **Cancelar**; `get_now_playing_meta()` para a Fila.
+- **`ui_qt/downloads_preview.py`**: preview debounced; eventos `PREVIEW_*` via `EventBridge`.
 - **`core/download_url_flow.py`**, **`core/queue_coordinator.py`**: regras puras testadas em `tests/`.
-- **`ui/queue_view.py`**: card *Baixando agora* (miniatura, título, barra, Cancelar/Pular) e card *Na fila* (lista, limpar, remover).
-- **`core/`**: lógica testável sem Tk; `build_ytdl_opts(job)` mapeia `DownloadJob` → opções yt-dlp.
-- **`ui/`** (demais views): componentes visuais; callbacks no `__init__` (`on_save`, `on_open_path`, `on_select`).
+- **`ui_qt/queue_view.py`**: *Baixando agora* + pendentes.
+- **`core/`**: lógica sem Qt; `build_ytdl_opts(job)` → yt-dlp.
 
 ## Fluxo de download (threading)
 
-Tk **não** é thread-safe. Padrão obrigatório:
+Qt **não** é thread-safe para widgets. Padrão obrigatório:
 
-1. Main thread: usuário clica Baixar → `DownloadsView` monta `DownloadJob` (`build_download_job` + `AppSettings`) → `on_start_download` → `app._run_download_job` inicia worker.
-2. Worker: `YoutubeDownloader.download(job, on_event)` chama `on_event(ProgressEvent)` → `queue.put`.
-3. Main thread: `after(50, _poll_queue)` drena a fila → `app._handle_event` → `DownloadsView.handle_progress_event`; ao terminar o worker, `force_release_download_ui` se a UI ainda estiver travada.
+1. Main thread (GUI): Baixar → `DownloadsView` monta `DownloadJob` → `on_start_download` → `start_download_thread`.
+2. Worker (`QThread`): `YoutubeDownloader.download(job, on_event)` → `EventBridge.emit_progress(ProgressEvent)` (queued connection → main thread).
+3. Main thread: slot `_handle_event` → `DownloadsView.handle_progress_event` / `QueueView.apply_progress_event`; ao terminar, `force_release_download_ui` se necessário.
 
-Nunca atualizar CustomTkinter a partir do worker.
+Nunca atualizar widgets Qt a partir do worker — só via signals/slots ou `QTimer.singleShot` na GUI thread.
 
 ## Fluxo de preview
 
@@ -114,7 +113,7 @@ Nunca atualizar CustomTkinter a partir do worker.
 | Download vídeo, qualidade, áudio MP3, merge MP4/WebM | Implementado (`downloader`, `build_ytdl_opts`; sempre `noplaylist`) |
 | Playlists → fila (N vídeos) | Implementado (`core/playlist_urls.py`, expand + fila) |
 | Preview título/thumbnail | Implementado (`metadata`) |
-| Sidebar, Configurações, Histórico, Biblioteca | Implementado (`ui/*_view.py`) |
+| Sidebar, Configurações, Histórico, Biblioteca | Implementado (`ui_qt/*_view.py`) |
 | Fila de downloads | Implementado (sequencial; tela **Fila** na sidebar — ver [docs/ux-downloads-queue.md](docs/ux-downloads-queue.md)) |
 | Abrir pasta/arquivo, histórico (↻, 📄) | Implementado |
 | Persistência `settings.json` / `history.json` | Implementado |
@@ -189,7 +188,7 @@ Fluxo sugerido: implementar → `youtube-downloader-logging` (checklist) → `py
 2. Extrair código, rodar `pytest`, depois evoluir.
 3. Ao extrair função pura de `core/` ou views, adicionar teste em `tests/` (ex.: `test_download_opts.py` para `build_ytdl_opts`).
 4. Novas telas: arquivo em `ui/` + entrada em `NavSidebar.ITEMS` + `_view_frames` em `app.py`.
-5. Em `CTkLabel`, não usar `border_width` / `border_color` — usar `CTkFrame` com borda (ver `history_view.py`).
+5. Estilos em `ui_qt/theme.py` (QSS); evitar cores hardcoded fora do tema.
 
 Ver regra [`.cursor/rules/refactoring.mdc`](.cursor/rules/refactoring.mdc).
 

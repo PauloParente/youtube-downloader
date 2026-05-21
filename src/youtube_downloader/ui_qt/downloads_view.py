@@ -1,29 +1,34 @@
-"""Downloads screen — URL, preview, options, progress, and activity log."""
+"""Downloads screen (PySide6)."""
 
 from __future__ import annotations
 
 import os
-import queue
-import sys
 import threading
-import tkinter as tk
 from collections.abc import Callable
 from typing import Literal, Optional
 
-import customtkinter as ctk
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
 from youtube_downloader.config import (
     DEFAULT_DOWNLOADS_DIR,
-    DOWNLOADS_FOOTER_STACK_WIDTH,
     QUALITY_COMBO_VALUES,
     QUALITY_DISPLAY_LABELS,
     QUALITY_FROM_DISPLAY,
     QUALITY_OPTIONS,
 )
-from youtube_downloader.core.logging_config import get_logger
-from youtube_downloader.core.metadata import VideoPreview, is_youtube_url
-from youtube_downloader.core.path_utils import open_path_in_explorer
-from youtube_downloader.core.preview_cache import PreviewCache
 from youtube_downloader.core.download_job_builder import build_download_job
 from youtube_downloader.core.download_url_flow import (
     ResolvedUrlPlanKind,
@@ -32,6 +37,10 @@ from youtube_downloader.core.download_url_flow import (
     needs_network_expand,
     plan_resolved_urls,
 )
+from youtube_downloader.core.logging_config import get_logger
+from youtube_downloader.core.metadata import VideoPreview, is_youtube_url
+from youtube_downloader.core.models import DownloadJob, EventType, ProgressEvent
+from youtube_downloader.core.path_utils import open_path_in_explorer
 from youtube_downloader.core.playlist_urls import (
     PlaylistExpandError,
     PlaylistMode,
@@ -39,29 +48,13 @@ from youtube_downloader.core.playlist_urls import (
     classify_youtube_url,
     resolve_download_urls,
 )
-from youtube_downloader.core.models import DownloadJob, EventType, ProgressEvent
+from youtube_downloader.core.preview_cache import PreviewCache
 from youtube_downloader.core.settings import AppSettings
 from youtube_downloader.core.text_utils import truncate_text
-from youtube_downloader.ui.downloads_preview import DownloadsPreviewPanel
-from youtube_downloader.ui.layout_utils import apply_wraplength_from_widget
-from youtube_downloader.ui.playlist_choice_dialog import ask_video_in_playlist_choice
-from youtube_downloader.ui.theme import (
-    ACCENT,
-    ACCENT_HOVER,
-    APP_BG,
-    BTN_DISABLED,
-    BTN_SECONDARY,
-    BTN_SECONDARY_HOVER,
-    CARD_BORDER,
-    CARD_STYLE,
-    ENTRY_STYLE,
-    FONT_BODY,
-    PRIMARY_BTN,
-    SECONDARY_BTN,
-    TEXT_MUTED,
-    TEXT_PRIMARY,
-    TEXT_SECONDARY,
-)
+from youtube_downloader.ui_qt.downloads_preview import DownloadsPreviewPanel
+from youtube_downloader.ui_qt.event_bridge import EventBridge
+from youtube_downloader.ui_qt.playlist_choice_dialog import ask_video_in_playlist_choice
+from youtube_downloader.ui_qt.util import run_on_main, schedule
 
 logger = get_logger(__name__)
 
@@ -71,12 +64,12 @@ QUEUE_URL_TRUNCATE = 58
 DEFAULT_STATUS_TEXT = "Pronto para baixar."
 
 
-class DownloadsView(ctk.CTkFrame):
+class DownloadsView(QWidget):
     def __init__(
         self,
-        master: ctk.CTkBaseClass,
+        parent: QWidget | None = None,
         *,
-        event_queue: queue.Queue[ProgressEvent],
+        event_bridge: EventBridge,
         preview_cache: PreviewCache,
         on_start_download: Callable[[DownloadJob], None],
         on_cancel_download: Callable[[], None],
@@ -91,10 +84,9 @@ class DownloadsView(ctk.CTkFrame):
         pop_next_queue_url: Callable[[], Optional[str]],
         on_sync_queue_structure: Callable[[], None],
         on_sync_now_playing: Callable[[], None],
-        **kwargs,
     ) -> None:
-        super().__init__(master, fg_color="transparent", **kwargs)
-        self._event_queue = event_queue
+        super().__init__(parent)
+        self._event_bridge = event_bridge
         self._preview_cache = preview_cache
         self._on_start_download = on_start_download
         self._on_cancel_download = on_cancel_download
@@ -116,18 +108,10 @@ class DownloadsView(ctk.CTkFrame):
         self._last_progress_percent: Optional[float] = None
         self._now_playing_title: Optional[str] = None
         self._preview_panel: Optional[DownloadsPreviewPanel] = None
-        self._status_reset_after_id: Optional[str] = None
+        self._status_reset_after_id: Optional[int] = None
         self._last_download_filepath: Optional[str] = None
-        self._log_body: Optional[ctk.CTkFrame] = None
+        self._log_body: Optional[QWidget] = None
         self._log_expanded = True
-        self._scroll_host: Optional[ctk.CTkFrame] = None
-        self._scroll: Optional[ctk.CTkScrollableFrame] = None
-        self._footer: Optional[ctk.CTkFrame] = None
-        self._btn_row: Optional[ctk.CTkFrame] = None
-        self._footer_layout_narrow = False
-
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
         self._build_ui()
 
     @property
@@ -136,7 +120,7 @@ class DownloadsView(ctk.CTkFrame):
 
     @property
     def current_url(self) -> str:
-        return self._url_entry.get().strip()
+        return self._url_entry.text().strip()
 
     def set_now_playing_title(self, title: str) -> None:
         self._now_playing_title = title.strip() or None
@@ -147,7 +131,7 @@ class DownloadsView(ctk.CTkFrame):
     def apply_settings(self, settings: AppSettings) -> None:
         if settings.quality in QUALITY_OPTIONS:
             self._set_quality_combo(settings.quality)
-        self._audio_only_var.set(settings.audio_only)
+        self._audio_only_var.setChecked(settings.audio_only)
         self._on_audio_toggle()
 
     def paste_url(self) -> None:
@@ -178,7 +162,7 @@ class DownloadsView(ctk.CTkFrame):
         self._preview_cache.request(urls)
 
     def get_now_playing_meta(self) -> dict:
-        url = self._url_entry.get().strip()
+        url = self._url_entry.text().strip()
         cached = self._preview_cache.get(url)
         title = (self._now_playing_title or "").strip()
         if not title and cached and cached.title:
@@ -188,7 +172,7 @@ class DownloadsView(ctk.CTkFrame):
             title = preview.title.strip()
         status = DEFAULT_STATUS_TEXT
         if hasattr(self, "_status_label"):
-            status = self._status_label.cget("text") or status
+            status = self._status_label.text() or status
         return {
             "active": self._is_downloading,
             "url": url,
@@ -203,9 +187,8 @@ class DownloadsView(ctk.CTkFrame):
     def set_url_and_focus(self, url: str) -> None:
         if self._is_downloading:
             return
-        self._url_entry.delete(0, "end")
-        self._url_entry.insert(0, url)
-        self._url_entry.focus_set()
+        self._url_entry.setText(url)
+        self._url_entry.setFocus()
         self._schedule_preview_if_ready()
 
     def show_status_hint(self, text: str, *, reset_after_ms: int = 5000) -> None:
@@ -223,8 +206,7 @@ class DownloadsView(ctk.CTkFrame):
         cleaned = url.strip()
         if not cleaned:
             return
-        self._url_entry.delete(0, "end")
-        self._url_entry.insert(0, cleaned)
+        self._url_entry.setText(cleaned)
         self._schedule_preview_if_ready()
         self._run_download_job_for_url(cleaned)
 
@@ -233,8 +215,7 @@ class DownloadsView(ctk.CTkFrame):
         cleaned = url.strip()
         if not cleaned:
             return
-        self._url_entry.delete(0, "end")
-        self._url_entry.insert(0, cleaned)
+        self._url_entry.setText(cleaned)
         self._now_playing_title = None
         cached = self._preview_cache.get(cleaned)
         if cached and cached.title:
@@ -253,12 +234,12 @@ class DownloadsView(ctk.CTkFrame):
         self._release_download_ui()
 
     def _get_quality_internal(self) -> str:
-        display = self._quality_combo.get()
+        display = self._quality_combo.currentText()
         return QUALITY_FROM_DISPLAY.get(display, QUALITY_OPTIONS[0])
 
     def _set_quality_combo(self, quality: str) -> None:
         label = QUALITY_DISPLAY_LABELS.get(quality, QUALITY_DISPLAY_LABELS[QUALITY_OPTIONS[0]])
-        self._quality_combo.set(label)
+        self._quality_combo.setCurrentText(label)
 
     def _update_progress_percent(self, percent: Optional[float]) -> None:
         self._last_progress_percent = percent
@@ -267,310 +248,103 @@ class DownloadsView(ctk.CTkFrame):
         if self._log_body is None:
             return
         self._log_expanded = not self._log_expanded
-        if self._log_expanded:
-            self._log_body.grid(row=0, column=0, sticky="nsew")
-            self._log_toggle_btn.configure(text="▼")
-        else:
-            self._log_body.grid_remove()
-            self._log_toggle_btn.configure(text="▶")
+        self._log_body.setVisible(self._log_expanded)
+        self._log_toggle_btn.setText("▼" if self._log_expanded else "▶")
 
     def _build_ui(self) -> None:
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-        cp = 20
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 12, 20, 16)
 
-        # Host does not grow with scroll content — keeps viewport above the fixed footer.
-        self._scroll_host = ctk.CTkFrame(self, fg_color="transparent")
-        self._scroll_host.grid(row=0, column=0, sticky="nsew")
-        self._scroll_host.grid_propagate(False)
-        self._scroll_host.grid_rowconfigure(0, weight=1)
-        self._scroll_host.grid_columnconfigure(0, weight=1)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
 
-        self._scroll = ctk.CTkScrollableFrame(self._scroll_host, fg_color="transparent")
-        self._scroll.grid(row=0, column=0, sticky="nsew")
-        self._scroll.grid_columnconfigure(0, weight=1)
-        self.bind("<Configure>", self._on_view_configure)
-
-        scroll = self._scroll
-
-        ctk.CTkLabel(
-            scroll,
-            text="URL do YouTube",
-            anchor="w",
-            font=ctk.CTkFont(size=12),
-            text_color=TEXT_SECONDARY,
-        ).grid(row=0, column=0, padx=cp, pady=(4, 6), sticky="ew")
-
-        url_outer = ctk.CTkFrame(scroll, fg_color="transparent")
-        url_outer.grid(row=1, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
-        url_outer.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(
-            url_outer, text="🔗", width=28, font=ctk.CTkFont(size=16), text_color=TEXT_MUTED
-        ).grid(row=0, column=0, padx=(4, 0))
-        self._url_entry = ctk.CTkEntry(
-            url_outer,
-            placeholder_text="Cole o link do vídeo ou playlist aqui...",
-            **ENTRY_STYLE,
-        )
-        self._url_entry.grid(row=0, column=1, padx=(0, 8), sticky="ew")
-        self._url_entry.bind("<<Paste>>", lambda _e: self._schedule_preview_if_ready())
-        self._url_entry.bind("<KeyRelease>", lambda _e: self._schedule_preview_if_ready())
+        scroll_layout.addWidget(QLabel("URL do YouTube"))
+        url_row = QHBoxLayout()
+        url_row.addWidget(QLabel("🔗"))
+        self._url_entry = QLineEdit()
+        self._url_entry.setPlaceholderText("Cole o link do vídeo ou playlist aqui...")
+        self._url_entry.textChanged.connect(lambda _: self._schedule_preview_if_ready())
+        url_row.addWidget(self._url_entry, stretch=1)
         self._preview_panel = DownloadsPreviewPanel(
             self,
-            url_entry=self._url_entry,
-            event_queue=self._event_queue,
+            get_url=lambda: self._url_entry.text(),
+            event_bridge=self._event_bridge,
             preview_cache=self._preview_cache,
             is_downloading=lambda: self._is_downloading,
         )
-        self._clear_url_btn = ctk.CTkButton(
-            url_outer,
-            text="✕",
-            width=40,
-            command=self._clear_url,
-            **SECONDARY_BTN,
-        )
-        self._clear_url_btn.grid(row=0, column=2, padx=(0, 8))
-        self._enqueue_btn = ctk.CTkButton(
-            url_outer,
-            text="+ Fila",
-            width=72,
-            command=self._enqueue_current_url,
-            **SECONDARY_BTN,
-        )
-        self._enqueue_btn.grid(row=0, column=3)
+        self._clear_url_btn = QPushButton("✕")
+        self._clear_url_btn.clicked.connect(self._clear_url)
+        url_row.addWidget(self._clear_url_btn)
+        self._enqueue_btn = QPushButton("+ Fila")
+        self._enqueue_btn.clicked.connect(self._enqueue_current_url)
+        url_row.addWidget(self._enqueue_btn)
+        scroll_layout.addLayout(url_row)
 
-        mid = ctk.CTkFrame(scroll, fg_color="transparent")
-        mid.grid(row=2, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
-        mid.grid_columnconfigure(0, weight=1)
-
-        assert self._preview_panel is not None
+        mid = QWidget()
+        mid_layout = QVBoxLayout(mid)
+        mid_layout.setContentsMargins(0, 0, 0, 0)
         preview_card = self._preview_panel.build_into(mid)
-
-        preview_opts = ctk.CTkFrame(preview_card, fg_color="transparent")
-        preview_opts.pack(fill="x", padx=12, pady=(0, 14))
-        preview_opts.grid_columnconfigure(0, weight=1)
-
-        self._audio_only_var = tk.BooleanVar(value=False)
-        self._audio_checkbox = ctk.CTkCheckBox(
-            preview_opts,
-            text="Somente áudio",
-            variable=self._audio_only_var,
-            command=self._on_options_changed,
-            font=ctk.CTkFont(size=13),
-            text_color=TEXT_PRIMARY,
-            fg_color=ACCENT,
-            hover_color=ACCENT_HOVER,
-        )
-        self._audio_checkbox.grid(row=0, column=0, sticky="w", pady=(0, 10))
-        ctk.CTkLabel(
-            preview_opts,
-            text="Qualidade",
-            font=ctk.CTkFont(size=12),
-            text_color=TEXT_SECONDARY,
-            anchor="w",
-        ).grid(row=1, column=0, sticky="w", pady=(0, 6))
-        self._quality_combo = ctk.CTkComboBox(
-            preview_opts,
-            values=QUALITY_COMBO_VALUES,
-            state="readonly",
-            command=self._on_quality_changed,
-            dropdown_fg_color=APP_BG,
-            button_color=BTN_SECONDARY,
-            button_hover_color=BTN_SECONDARY_HOVER,
-            border_color=ENTRY_STYLE["border_color"],
-            fg_color=ENTRY_STYLE["fg_color"],
-            text_color=TEXT_PRIMARY,
-        )
+        opts = QVBoxLayout(preview_card)
+        self._audio_only_var = QCheckBox("Somente áudio")
+        self._audio_only_var.toggled.connect(lambda _: self._on_options_changed())
+        opts.addWidget(self._audio_only_var)
+        opts.addWidget(QLabel("Qualidade"))
+        self._quality_combo = QComboBox()
+        self._quality_combo.addItems(QUALITY_COMBO_VALUES)
+        self._quality_combo.currentTextChanged.connect(self._on_quality_changed)
         self._set_quality_combo(QUALITY_OPTIONS[0])
-        self._quality_combo.grid(row=2, column=0, sticky="ew")
+        opts.addWidget(self._quality_combo)
+        scroll_layout.addWidget(mid)
 
-        bottom = ctk.CTkFrame(scroll, fg_color="transparent")
-        bottom.grid(row=3, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
-        bottom.grid_columnconfigure(0, weight=1)
+        log_header = QHBoxLayout()
+        self._log_toggle_btn = QPushButton("▼")
+        self._log_toggle_btn.clicked.connect(self._toggle_log_panel)
+        log_header.addWidget(self._log_toggle_btn)
+        log_header.addWidget(QLabel("<b>ATIVIDADE</b>"))
+        log_header.addStretch()
+        self._clear_log_btn = QPushButton("Limpar")
+        self._clear_log_btn.clicked.connect(self._clear_log)
+        log_header.addWidget(self._clear_log_btn)
+        scroll_layout.addLayout(log_header)
 
-        log_block = ctk.CTkFrame(bottom, fg_color="transparent")
-        log_block.grid(row=0, column=0, sticky="ew")
-        log_block.grid_columnconfigure(0, weight=1)
-        log_header = ctk.CTkFrame(log_block, fg_color="transparent")
-        log_header.grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        log_header.grid_columnconfigure(1, weight=1)
-        self._log_toggle_btn = ctk.CTkButton(
-            log_header, text="▼", width=28, height=24, command=self._toggle_log_panel, **SECONDARY_BTN
-        )
-        self._log_toggle_btn.grid(row=0, column=0, padx=(0, 6))
-        ctk.CTkLabel(
-            log_header,
-            text="ATIVIDADE",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color=TEXT_SECONDARY,
-            anchor="w",
-        ).grid(row=0, column=1, sticky="w")
-        self._clear_log_btn = ctk.CTkButton(
-            log_header, text="Limpar", width=70, height=24, command=self._clear_log, **SECONDARY_BTN
-        )
-        self._clear_log_btn.grid(row=0, column=2, sticky="e")
-        log_card = ctk.CTkFrame(log_block, **CARD_STYLE)
-        log_card.grid(row=1, column=0, sticky="ew")
-        log_card.grid_columnconfigure(0, weight=1)
-        log_card.grid_rowconfigure(0, weight=1)
-        self._log_body = ctk.CTkFrame(log_card, fg_color="transparent")
-        self._log_body.grid(row=0, column=0, sticky="nsew")
-        self._log_body.grid_columnconfigure(0, weight=1)
-        self._log_body.grid_rowconfigure(0, weight=1)
-        self._log_box = ctk.CTkTextbox(
-            self._log_body,
-            state="disabled",
-            wrap="word",
-            height=LOG_TEXTBOX_HEIGHT,
-            fg_color=("#161616", "#161616"),
-            border_color=CARD_STYLE["border_color"],
-            border_width=1,
-            text_color=TEXT_SECONDARY,
-            font=ctk.CTkFont(family=FONT_BODY[0], size=11),
-        )
-        self._log_box.grid(row=0, column=0, padx=12, pady=12, sticky="ew")
+        log_card = QFrame()
+        log_card.setObjectName("card")
+        log_card_layout = QVBoxLayout(log_card)
+        self._log_body = QWidget()
+        log_body_layout = QVBoxLayout(self._log_body)
+        self._log_box = QPlainTextEdit()
+        self._log_box.setReadOnly(True)
+        self._log_box.setFixedHeight(LOG_TEXTBOX_HEIGHT)
+        log_body_layout.addWidget(self._log_box)
+        log_card_layout.addWidget(self._log_body)
+        scroll_layout.addWidget(log_card)
 
-        self._footer = ctk.CTkFrame(self, fg_color="transparent")
-        self._footer.grid(row=1, column=0, padx=cp, pady=(8, 16), sticky="ew")
-        footer = self._footer
-        footer.grid_columnconfigure(0, weight=1)
-        self._status_label = ctk.CTkLabel(
-            footer,
-            text=DEFAULT_STATUS_TEXT,
-            anchor="w",
-            text_color=TEXT_SECONDARY,
-            font=ctk.CTkFont(size=12),
-        )
-        self._status_label.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        self._btn_row = ctk.CTkFrame(footer, fg_color="transparent")
-        self._btn_row.grid(row=1, column=0, sticky="ew")
-        self._btn_row.grid_columnconfigure(3, weight=1)
-        self._btn_row.bind("<Configure>", self._on_footer_resize)
-        btn_row = self._btn_row
-        self._open_folder_btn = ctk.CTkButton(
-            btn_row,
-            text="📁  Abrir pasta",
-            width=120,
-            height=40,
-            command=self._open_folder,
-            **SECONDARY_BTN,
-        )
-        self._open_folder_btn.grid(row=0, column=0, padx=(0, 8))
-        self._open_file_btn = ctk.CTkButton(
-            btn_row,
-            text="📄  Abrir arquivo",
-            width=130,
-            height=40,
-            command=self._open_last_file,
-            state="disabled",
-            fg_color=BTN_DISABLED,
-            hover_color=BTN_SECONDARY,
-            text_color=TEXT_PRIMARY,
-            corner_radius=6,
-        )
-        self._open_file_btn.grid(row=0, column=1, padx=(0, 8))
-        self._cancel_btn = ctk.CTkButton(
-            btn_row,
-            text="✕  Cancelar",
-            width=120,
-            height=40,
-            command=self._cancel_download,
-            state="disabled",
-            fg_color=BTN_DISABLED,
-            hover_color=BTN_SECONDARY,
-            text_color=TEXT_PRIMARY,
-            corner_radius=6,
-        )
-        self._cancel_btn.grid(row=0, column=2, padx=(0, 8))
-        self._download_btn = ctk.CTkButton(
-            btn_row,
-            text="⬇  Baixar",
-            width=140,
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            command=self._start_download,
-            **PRIMARY_BTN,
-        )
-        self._download_btn.grid(row=0, column=4, sticky="e")
+        scroll.setWidget(scroll_content)
+        root.addWidget(scroll, stretch=1)
+
+        self._status_label = QLabel(DEFAULT_STATUS_TEXT)
+        root.addWidget(self._status_label)
+        btn_row = QHBoxLayout()
+        self._open_folder_btn = QPushButton("📁  Abrir pasta")
+        self._open_folder_btn.clicked.connect(self._open_folder)
+        btn_row.addWidget(self._open_folder_btn)
+        self._open_file_btn = QPushButton("📄  Abrir arquivo")
+        self._open_file_btn.setEnabled(False)
+        self._open_file_btn.clicked.connect(self._open_last_file)
+        btn_row.addWidget(self._open_file_btn)
+        self._cancel_btn = QPushButton("✕  Cancelar")
+        self._cancel_btn.clicked.connect(self._cancel_download)
+        btn_row.addWidget(self._cancel_btn)
+        btn_row.addStretch()
+        self._download_btn = QPushButton("⬇  Baixar")
+        self._download_btn.setObjectName("primary")
+        self._download_btn.clicked.connect(self._start_download)
+        btn_row.addWidget(self._download_btn)
+        root.addLayout(btn_row)
         self._sync_action_buttons()
         self._on_sync_queue_structure()
-        self.after_idle(self._on_view_configure)
-        self.after_idle(lambda: self._apply_footer_button_layout(False))
-
-    def _on_view_configure(self, _event: Optional[object] = None) -> None:
-        self._sync_scroll_viewport()
-        self._on_scroll_wraplength()
-
-    def _sync_scroll_viewport(self) -> None:
-        """Keep the scroll area height within the space above the fixed footer."""
-        if self._scroll_host is None or self._footer is None:
-            return
-        try:
-            self.update_idletasks()
-            total_h = self.winfo_height()
-            footer_h = self._footer.winfo_reqheight()
-        except tk.TclError:
-            return
-        total_w = self.winfo_width()
-        if total_h <= 1 or total_w <= 1:
-            return
-        scroll_h = max(160, total_h - footer_h - 4)
-        if (
-            self._scroll_host.winfo_height() != scroll_h
-            or self._scroll_host.winfo_width() != total_w
-        ):
-            self._scroll_host.configure(height=scroll_h, width=total_w)
-
-    def _on_scroll_wraplength(self) -> None:
-        if self._scroll is None:
-            return
-        if self._preview_panel is not None and self._preview_panel.mid is not None:
-            title_lbl = self._preview_panel.preview_title_label
-            if title_lbl is not None:
-                apply_wraplength_from_widget(
-                    title_lbl, self._preview_panel.mid, pad=48, max_px=520
-                )
-
-    def _on_footer_resize(self, event: Optional[object] = None) -> None:
-        if self._btn_row is None:
-            return
-        if event is not None and getattr(event, "widget", None) != self._btn_row:
-            return
-        try:
-            width = self._btn_row.winfo_width()
-        except tk.TclError:
-            return
-        if width <= 1:
-            return
-        narrow = width < DOWNLOADS_FOOTER_STACK_WIDTH
-        if narrow == self._footer_layout_narrow:
-            return
-        self._footer_layout_narrow = narrow
-        self._apply_footer_button_layout(narrow)
-
-    def _apply_footer_button_layout(self, narrow: bool) -> None:
-        if self._btn_row is None:
-            return
-        for btn in (
-            self._open_folder_btn,
-            self._open_file_btn,
-            self._cancel_btn,
-            self._download_btn,
-        ):
-            btn.grid_forget()
-        if narrow:
-            self._btn_row.grid_columnconfigure(3, weight=0)
-            self._open_folder_btn.grid(row=0, column=0, padx=(0, 8), sticky="w")
-            self._open_file_btn.grid(row=0, column=1, padx=(0, 8), sticky="w")
-            self._cancel_btn.grid(row=0, column=2, padx=(0, 8), sticky="w")
-            self._download_btn.grid(row=1, column=0, columnspan=3, sticky="e", pady=(8, 0))
-        else:
-            self._btn_row.grid_columnconfigure(3, weight=1)
-            self._open_folder_btn.grid(row=0, column=0, padx=(0, 8))
-            self._open_file_btn.grid(row=0, column=1, padx=(0, 8))
-            self._cancel_btn.grid(row=0, column=2, padx=(0, 8))
-            self._download_btn.grid(row=0, column=4, sticky="e")
-        self.after_idle(self._sync_scroll_viewport)
 
     def _output_dir(self) -> str:
         path = self._get_app_settings().output_dir.strip()
@@ -581,7 +355,7 @@ class DownloadsView(ctk.CTkFrame):
         return AppSettings(
             output_dir=app.output_dir,
             quality=self._get_quality_internal(),
-            audio_only=self._audio_only_var.get(),
+            audio_only=self._audio_only_var.isChecked(),
         )
 
     def _on_options_changed(self) -> None:
@@ -592,39 +366,30 @@ class DownloadsView(ctk.CTkFrame):
         self._on_persist_settings()
 
     def _paste_url(self) -> None:
-        try:
-            text = self.clipboard_get().strip()
-        except tk.TclError:
-            return
+        text = QApplication.clipboard().text().strip()
         if text:
-            self._url_entry.delete(0, "end")
-            self._url_entry.insert(0, text)
+            self._url_entry.setText(text)
             self._schedule_preview_if_ready()
 
     def _clear_url(self) -> None:
-        self._url_entry.delete(0, "end")
+        self._url_entry.clear()
         if not self._is_downloading and self._preview_panel is not None:
             self._preview_panel.clear()
 
     def _clear_log(self) -> None:
-        self._log_box.configure(state="normal")
-        self._log_box.delete("1.0", "end")
-        self._log_box.configure(state="disabled")
+        self._log_box.clear()
 
     def _set_expand_busy(self, busy: bool) -> None:
         self._expanding_playlist = busy
         if busy:
             self._set_download_status("A obter vídeos da playlist…")
-            if self._status_reset_after_id is not None:
-                self.after_cancel(self._status_reset_after_id)
-                self._status_reset_after_id = None
+            self._status_reset_after_id = None
         elif not self._is_downloading:
             self._schedule_status_reset()
         if self._is_downloading:
             return
-        state = "disabled" if busy else "normal"
-        self._download_btn.configure(state=state)
-        self._enqueue_btn.configure(state=state)
+        self._download_btn.setEnabled(not busy)
+        self._enqueue_btn.setEnabled(not busy)
 
     def _resolve_urls_async(
         self,
@@ -635,12 +400,12 @@ class DownloadsView(ctk.CTkFrame):
         def worker() -> None:
             try:
                 urls = resolve_download_urls(url, playlist_mode=playlist_mode)
-                self.after(0, lambda: on_done(urls, None))
+                run_on_main(self, lambda: on_done(urls, None))
             except PlaylistExpandError as exc:
-                self.after(0, lambda: on_done(None, str(exc)))
+                run_on_main(self, lambda: on_done(None, str(exc)))
             except Exception as exc:
                 logger.exception("Falha ao resolver URLs: %s", url[:80])
-                self.after(0, lambda: on_done(None, str(exc)))
+                run_on_main(self, lambda: on_done(None, str(exc)))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -667,7 +432,7 @@ class DownloadsView(ctk.CTkFrame):
                 else None
             )
             playlist_mode = ask_video_in_playlist_choice(
-                self.winfo_toplevel(),
+                self.window(),
                 playlist_count=count,
             )
             if playlist_mode is None:
@@ -732,8 +497,7 @@ class DownloadsView(ctk.CTkFrame):
             self._append_log(format_playlist_download_start_log(1, added_rest=0, skipped=0))
 
         first = plan.start_url
-        self._url_entry.delete(0, "end")
-        self._url_entry.insert(0, first)
+        self._url_entry.setText(first)
         self._schedule_preview_if_ready()
         self._append_log(
             f"Iniciando: {truncate_text(first, QUEUE_URL_TRUNCATE)}"
@@ -745,16 +509,7 @@ class DownloadsView(ctk.CTkFrame):
             self._last_download_filepath
             and os.path.isfile(self._last_download_filepath)
         )
-        if enabled:
-            self._open_file_btn.configure(state="normal", **SECONDARY_BTN)
-        else:
-            self._open_file_btn.configure(
-                state="disabled",
-                fg_color=BTN_DISABLED,
-                hover_color=BTN_SECONDARY,
-                text_color=TEXT_PRIMARY,
-                corner_radius=6,
-            )
+        self._open_file_btn.setEnabled(enabled)
 
     def _open_last_file(self) -> None:
         if self._last_download_filepath and os.path.isfile(self._last_download_filepath):
@@ -763,7 +518,7 @@ class DownloadsView(ctk.CTkFrame):
     def _enqueue_current_url(self) -> None:
         if self._is_downloading and self._expanding_playlist:
             return
-        url = self._url_entry.get().strip()
+        url = self._url_entry.text().strip()
         self._resolve_and_act(url, action="enqueue")
 
     def _open_path_in_explorer(self, path: str) -> None:
@@ -784,28 +539,23 @@ class DownloadsView(ctk.CTkFrame):
         self._open_path_in_explorer(output_dir)
 
     def _on_audio_toggle(self) -> None:
-        if self._audio_only_var.get():
-            self._quality_combo.configure(state="disabled")
-        else:
-            self._quality_combo.configure(state="readonly")
+        self._quality_combo.setEnabled(not self._audio_only_var.isChecked())
 
     def _append_log(self, message: str) -> None:
-        self._log_box.configure(state="normal")
-        self._log_box.insert("end", message + "\n")
-        self._log_box.see("end")
-        self._log_box.configure(state="disabled")
+        self._log_box.appendPlainText(message)
+        self._log_box.verticalScrollBar().setValue(
+            self._log_box.verticalScrollBar().maximum()
+        )
 
     def _set_download_status(self, text: str) -> None:
-        self._status_label.configure(text=text)
+        self._status_label.setText(text)
 
     def _reset_download_status(self) -> None:
         self._status_reset_after_id = None
         self._set_download_status(DEFAULT_STATUS_TEXT)
 
     def _schedule_status_reset(self, delay_ms: int = 3000) -> None:
-        if self._status_reset_after_id is not None:
-            self.after_cancel(self._status_reset_after_id)
-        self._status_reset_after_id = self.after(delay_ms, self._reset_download_status)
+        schedule(self, delay_ms, self._reset_download_status)
 
     def _current_preview(self) -> Optional[VideoPreview]:
         if self._preview_panel is None:
@@ -820,7 +570,7 @@ class DownloadsView(ctk.CTkFrame):
             self._preview_panel.preview_title_label if self._preview_panel else None
         )
         if title_lbl is not None:
-            title = title_lbl.cget("text").strip()
+            title = title_lbl.text().strip()
             if title and title not in (
                 "Carregando preview…",
                 "—",
@@ -852,24 +602,21 @@ class DownloadsView(ctk.CTkFrame):
         self._preview_cache.request([url])
 
     def _set_controls_enabled(self, enabled: bool) -> None:
-        state = "normal" if enabled else "disabled"
-        # URL stays editable while downloading so the user can enqueue more links.
-        if enabled:
-            self._url_entry.configure(state="normal")
-            self._clear_url_btn.configure(state="normal")
-        self._clear_log_btn.configure(state=state)
-        self._open_folder_btn.configure(state=state)
+        self._clear_url_btn.setEnabled(True)
+        self._url_entry.setEnabled(True)
+        self._clear_log_btn.setEnabled(enabled)
+        self._open_folder_btn.setEnabled(enabled)
         if not enabled:
-            self._open_file_btn.configure(state="disabled")
+            self._open_file_btn.setEnabled(False)
         else:
             self._update_open_file_button()
-        self._audio_checkbox.configure(state=state)
-        self._enqueue_btn.configure(state=state)
+        self._audio_only_var.setEnabled(enabled)
+        self._enqueue_btn.setEnabled(enabled)
         if enabled:
             self._on_audio_toggle()
         else:
-            self._quality_combo.configure(state="disabled")
-        self._download_btn.configure(state=state)
+            self._quality_combo.setEnabled(False)
+        self._download_btn.setEnabled(enabled)
         self._sync_action_buttons()
 
     def _has_pending_queue(self) -> bool:
@@ -877,21 +624,19 @@ class DownloadsView(ctk.CTkFrame):
 
     def _sync_action_buttons(self) -> None:
         if self._is_downloading:
-            self._cancel_btn.configure(
-                text="✕  Cancelar",
-                state="normal",
-                command=self._cancel_download,
-                fg_color=BTN_SECONDARY,
-                hover_color=BTN_SECONDARY_HOVER,
-            )
+            self._cancel_btn.setText("✕  Cancelar")
+            try:
+                self._cancel_btn.clicked.disconnect()
+            except RuntimeError:
+                pass
+            self._cancel_btn.clicked.connect(self._cancel_download)
         else:
-            self._cancel_btn.configure(
-                text="Limpar URL",
-                state="normal",
-                command=self._clear_url,
-                fg_color=BTN_SECONDARY,
-                hover_color=BTN_SECONDARY_HOVER,
-            )
+            self._cancel_btn.setText("Limpar URL")
+            try:
+                self._cancel_btn.clicked.disconnect()
+            except RuntimeError:
+                pass
+            self._cancel_btn.clicked.connect(self._clear_url)
 
     def _between_queue_items_ui(self) -> None:
         """Keep batch controls while the next queued item is about to start."""
@@ -914,12 +659,11 @@ class DownloadsView(ctk.CTkFrame):
         if self._is_downloading or self._expanding_playlist:
             return
 
-        url = self._url_entry.get().strip()
+        url = self._url_entry.text().strip()
         if not url:
             url = (self._pop_next_queue_url() or "").strip()
             if url:
-                self._url_entry.delete(0, "end")
-                self._url_entry.insert(0, url)
+                self._url_entry.setText(url)
                 self._schedule_preview_if_ready()
                 self._append_log(
                     f"Iniciando da fila: {truncate_text(url, QUEUE_URL_TRUNCATE)}"
@@ -952,7 +696,7 @@ class DownloadsView(ctk.CTkFrame):
             url=cleaned,
             output_dir=output_dir,
             quality=self._get_quality_internal(),
-            audio_only=self._audio_only_var.get(),
+            audio_only=self._audio_only_var.isChecked(),
             preferences=self._get_app_settings(),
         )
         if not queue_continue:
@@ -966,9 +710,7 @@ class DownloadsView(ctk.CTkFrame):
         if not queue_continue:
             self._set_controls_enabled(False)
         self._last_progress_percent = 0.0
-        if self._status_reset_after_id is not None:
-            self.after_cancel(self._status_reset_after_id)
-            self._status_reset_after_id = None
+        self._status_reset_after_id = None
         start_label = self._get_preview_title_for_log() or truncate_text(cleaned, 60)
         self._append_log(f"Iniciando download: {start_label}")
         self._set_download_status("Baixando…")
@@ -989,7 +731,7 @@ class DownloadsView(ctk.CTkFrame):
         logger.info(
             "Usuario cancelou downloads (fila=%d): %s",
             pending,
-            self._url_entry.get().strip(),
+            self._url_entry.text().strip(),
         )
         self._on_cancel_download()
         if pending:
@@ -1007,7 +749,7 @@ class DownloadsView(ctk.CTkFrame):
         self._stop_batch_on_cancel = False
         logger.info(
             "Usuario pulou para proximo da fila: %s",
-            self._url_entry.get().strip(),
+            self._url_entry.text().strip(),
         )
         self._on_cancel_download()
         self._set_download_status("Pulando para o próximo…")
@@ -1059,7 +801,7 @@ class DownloadsView(ctk.CTkFrame):
                             self._on_record_history(event)
                         except Exception:
                             logger.exception("Falha ao registrar download no historico")
-                    self._url_entry.focus_set()
+                    self._url_entry.setFocus()
                 elif event.event_type == EventType.ERROR:
                     self._set_download_status("Erro no download.")
                 else:

@@ -30,9 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Tk for Python (smoke)
-        run: sudo apt-get update && sudo apt-get install -y python3-tk
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -46,5 +43,5 @@ jobs:
       - name: Run tests
         run: python -m pytest
 
-      - name: Smoke import tkinter
-        run: python -c "import tkinter"
+      - name: Smoke import PySide6
+        run: python -c "from PySide6.QtWidgets import QApplication; QApplication([])"

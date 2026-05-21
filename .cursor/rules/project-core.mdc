@@ -9,12 +9,12 @@ Leia [AGENTS.md](../../AGENTS.md) para arquitetura, lacunas settings→downloade
 
 ## Stack
 
-Python 3.10+, CustomTkinter, yt-dlp, Pillow, FFmpeg. Entrada: `main.py` ou `python -m youtube_downloader`. Código em `src/youtube_downloader/`.
+Python 3.10+, PySide6, yt-dlp, Pillow, FFmpeg. Entrada: `main.py` ou `python -m youtube_downloader`. Código em `src/youtube_downloader/`.
 
 ## Onde colocar código
 
 - Lógica de download, JSON, yt-dlp, FFmpeg → `core/`
-- Telas e widgets → `ui/`
+- Telas e widgets → `ui_qt/`
 - Constantes globais → `config.py`
 - Orquestração da janela → `app.py` (evitar crescer; preferir novas views em `ui/`)
 
