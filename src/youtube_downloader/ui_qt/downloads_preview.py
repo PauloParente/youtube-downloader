@@ -96,10 +96,10 @@ class DownloadsPreviewPanel:
             "Cole ou arraste um link do YouTube no campo acima.",
             parent=self._section,
         )
-        self._empty_state.hide()
         section_layout.addWidget(self._empty_state)
 
         self._skeleton = PreviewSkeleton()
+        self._skeleton.hide()
         section_layout.addWidget(self._skeleton)
 
         self._media_row = MediaPreviewRow(on_open_queue=self._on_open_queue)
@@ -118,6 +118,10 @@ class DownloadsPreviewPanel:
 
     def schedule_preview(self) -> None:
         if self._is_downloading():
+            return
+        url = self._get_url().strip()
+        if not url or not is_youtube_url(url):
+            self._clear_preview()
             return
         schedule(self._host, PREVIEW_DEBOUNCE_MS, self._run_preview_fetch)
 
