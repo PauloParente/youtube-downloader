@@ -7,16 +7,7 @@ from collections.abc import Callable
 from typing import Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QProgressBar,
-    QPushButton,
-    QScrollArea,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
 
 from youtube_downloader.core.logging_config import get_logger
 from youtube_downloader.core.metadata import VideoPreview, format_duration
@@ -24,26 +15,22 @@ from youtube_downloader.core.models import EventType, ProgressEvent
 from youtube_downloader.core.preview_cache import CARD_THUMB_SIZE, pil_rgb_from_bytes
 from youtube_downloader.core.text_utils import truncate_text
 from youtube_downloader.ui_qt.icons import icon_on_button
-from youtube_downloader.ui_qt.util import pixmap_from_bytes, pixmap_from_pil, schedule
-from youtube_downloader.ui_qt.theme import polish_widget
+from youtube_downloader.ui_qt.util import pixmap_from_pil, schedule
 from youtube_downloader.ui_qt.widgets import (
+    Card,
     CompactMediaRow,
     EmptyState,
-    GhostButton,
     IconButton,
-    MediaPreviewRow,
     PageHeader,
+    QueueNowPlayingCard,
     SectionTitle,
     apply_page_margins,
 )
 
 logger = get_logger(__name__)
 
-THUMB_DISPLAY_SIZE = (240, 135)
 QUEUE_URL_TRUNCATE = 58
 STRUCTURE_DEBOUNCE_MS = 150
-IDLE_NOW_PLAYING = "Nenhum download em andamento"
-DEFAULT_NOW_STATUS = "Aguardando…"
 LOADING_TITLE = "Carregando…"
 
 
@@ -75,6 +62,7 @@ class QueueView(QWidget):
         self._on_cancel_download = on_cancel_download
         self._on_skip_download = on_skip_download
         self._is_downloading = False
+        self._now_playing_url = ""
         self._cards_by_url: dict[str, _PendingCardUi] = {}
         self._structure_timer_pending = False
         self._build_ui()
@@ -88,41 +76,16 @@ class QueueView(QWidget):
             "Acompanhe o download atual e os próximos da fila.",
         )
         layout.addWidget(header)
-        self._subtitle = header.subtitle_label or QLabel()
+        self._subtitle = header.subtitle_label
 
-        now_card = QFrame()
-        now_card.setObjectName("card")
-        now_layout = QVBoxLayout(now_card)
-        now_layout.addWidget(SectionTitle("Baixando agora"))
-        self._now_media = MediaPreviewRow()
-        now_layout.addWidget(self._now_media)
-        status_row = QHBoxLayout()
-        self._now_status = QLabel()
-        self._now_pct = QLabel("0%")
-        status_row.addWidget(self._now_status, stretch=1)
-        status_row.addWidget(self._now_pct)
-        now_layout.addLayout(status_row)
-        self._now_progress = QProgressBar()
-        self._now_progress.setRange(0, 100)
-        now_layout.addWidget(self._now_progress)
-        actions = QHBoxLayout()
-        self._cancel_btn = GhostButton("Cancelar")
-        icon_on_button(self._cancel_btn, "clear", size=16)
-        self._cancel_btn.clicked.connect(self._on_cancel_download)
-        self._cancel_btn.setEnabled(False)
-        actions.addWidget(self._cancel_btn)
-        self._skip_btn = QPushButton("Pular")
-        icon_on_button(self._skip_btn, "skip", size=18)
-        self._skip_btn.clicked.connect(self._on_skip_download)
-        self._skip_btn.setEnabled(False)
-        actions.addWidget(self._skip_btn)
-        actions.addStretch()
-        now_layout.addLayout(actions)
-        layout.addWidget(now_card)
+        self._now_playing = QueueNowPlayingCard(
+            on_cancel=self._on_cancel_download,
+            on_skip=self._on_skip_download,
+        )
+        layout.addWidget(self._now_playing)
 
-        pending_card = QFrame()
-        pending_card.setObjectName("card")
-        pending_layout = QVBoxLayout(pending_card)
+        pending_card = Card()
+        pending_layout = pending_card.body_layout
         self._pending_title = SectionTitle("Na fila")
         pending_layout.addWidget(self._pending_title)
         scroll = QScrollArea()
@@ -136,15 +99,14 @@ class QueueView(QWidget):
         pending_layout.addWidget(scroll)
         self._empty_widget: Optional[EmptyState] = None
         layout.addWidget(pending_card, stretch=1)
-        self._apply_now_playing_idle_chrome(False)
 
-    def set_thumbnail_bytes(self, data: Optional[bytes]) -> None:
-        if not data:
-            self._now_media.set_placeholder("")
-            return
-        px = pixmap_from_bytes(data, THUMB_DISPLAY_SIZE)
-        if px:
-            self._now_media.set_pixmap(px)
+    def _apply_now_playing_thumb(self, url: str) -> None:
+        self._now_playing.apply_thumbnail(
+            url,
+            get_card_thumb=self._get_card_thumb,
+            get_cached_preview=self._get_cached_preview,
+            is_preview_pending=self._is_preview_pending,
+        )
 
     def set_now_playing(
         self,
@@ -156,92 +118,67 @@ class QueueView(QWidget):
         percent: Optional[float] = None,
     ) -> None:
         self._is_downloading = active
+        cleaned_url = url.strip()
         if active:
+            self._now_playing_url = cleaned_url
             display = (title or "").strip() or truncate_text(url, 48) or "Baixando…"
-            self._now_media.set_title(display)
-            self._now_media.set_meta(
-                truncate_text(url, QUEUE_URL_TRUNCATE) if url else ""
+            self._now_playing.set_active(
+                title=display,
+                meta=truncate_text(url, QUEUE_URL_TRUNCATE) if url else "",
+                status=status,
+                percent=percent,
             )
-            self._now_status.setText(status or DEFAULT_NOW_STATUS)
-            if percent is not None:
-                self._now_progress.setValue(int(percent * 100))
-                self._now_pct.setText(f"{int(percent * 100)}%")
-            self._now_progress.show()
-            self._now_pct.show()
+            if cleaned_url:
+                self._apply_now_playing_thumb(cleaned_url)
         else:
-            self._now_media.set_title(IDLE_NOW_PLAYING)
-            self._now_media.set_meta("")
-            self._now_status.setText("")
-            self._now_progress.setValue(0)
-            self._now_pct.setText("0%")
-        self._apply_now_playing_idle_chrome(active)
+            self._now_playing_url = ""
+            self._now_playing.set_idle()
         self._sync_action_buttons()
-
-    def _apply_now_playing_idle_chrome(self, active: bool) -> None:
-        if active:
-            self._now_media.set_placeholder("")
-            self._now_status.show()
-            self._now_progress.show()
-            self._now_pct.show()
-        else:
-            self._now_media.set_placeholder(IDLE_NOW_PLAYING)
-            self._now_status.hide()
-            self._now_progress.hide()
-            self._now_pct.hide()
 
     def apply_progress_event(self, event: ProgressEvent) -> None:
         if not self._is_downloading:
             return
         if event.event_type == EventType.PROGRESS:
             if event.percent is not None:
-                self._now_progress.setValue(int(event.percent * 100))
-                self._now_pct.setText(f"{int(event.percent * 100)}%")
+                self._now_playing.set_percent(event.percent)
             if event.message:
-                self._now_status.setText(event.message)
+                self._now_playing.set_status(event.message)
             if event.title:
-                self._now_media.set_title(event.title)
+                self._now_playing.set_title(event.title)
         elif event.event_type == EventType.LOG:
             if event.message:
-                self._now_status.setText(event.message)
+                self._now_playing.set_status(event.message)
             if event.percent is not None:
-                self._now_progress.setValue(int(event.percent * 100))
-                self._now_pct.setText(f"{int(event.percent * 100)}%")
+                self._now_playing.set_percent(event.percent)
             if event.title:
-                self._now_media.set_title(event.title)
+                self._now_playing.set_title(event.title)
         elif event.event_type == EventType.DONE:
-            self._now_progress.setValue(100)
-            self._now_pct.setText("100%")
+            self._now_playing.set_percent(1.0)
             if event.message:
-                self._now_status.setText(event.message)
+                self._now_playing.set_status(event.message)
         elif event.event_type == EventType.ERROR and event.message:
-            self._now_status.setText(event.message)
+            self._now_playing.set_status(event.message)
         elif event.event_type == EventType.CANCELLED:
-            self._now_status.setText("Cancelando…")
+            self._now_playing.set_status("Cancelando…")
 
     def _sync_action_buttons(self) -> None:
         pending = len(self._get_queue_snapshot())
         if self._is_downloading:
-            self._cancel_btn.setEnabled(True)
-            self._skip_btn.setEnabled(pending > 0)
-            if pending:
-                self._skip_btn.setObjectName("primary")
-            else:
-                self._skip_btn.setObjectName("")
-            polish_widget(self._skip_btn)
+            self._now_playing.set_cancel_enabled(True)
+            self._now_playing.set_skip_enabled(pending > 0, emphasize=pending > 0)
         else:
-            self._cancel_btn.setEnabled(False)
-            self._skip_btn.setEnabled(False)
-            self._skip_btn.setObjectName("")
-            polish_widget(self._skip_btn)
+            self._now_playing.set_cancel_enabled(False)
+            self._now_playing.set_skip_enabled(False)
 
     def _update_header_labels(self, count: int) -> None:
         suffix = f" ({count})" if count else ""
         self._pending_title.setText(f"Na fila{suffix}")
-        self._subtitle.setText(
-            f"{count} vídeo(s) aguardando na fila."
-            if count
-            else "Acompanhe o download atual e os próximos da fila."
-        )
+        if self._subtitle is not None:
+            self._subtitle.setText(
+                f"{count} vídeo(s) aguardando na fila."
+                if count
+                else "Acompanhe o download atual e os próximos da fila."
+            )
 
     def refresh(self) -> None:
         if not self._structure_timer_pending:
@@ -289,6 +226,8 @@ class QueueView(QWidget):
 
     def update_card(self, url: str) -> None:
         cleaned = url.strip()
+        if cleaned and cleaned == self._now_playing_url:
+            self._apply_now_playing_thumb(cleaned)
         ui = self._cards_by_url.get(cleaned)
         if ui is None:
             return

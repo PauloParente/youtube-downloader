@@ -48,6 +48,7 @@ class ThumbnailLabel(QWidget):
         corner_radius: int | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("thumbSlot")
         self.setFixedSize(width, height)
         self._corner_radius = RADIUS_THUMB if corner_radius is None else corner_radius
         self._image = QLabel(self)
@@ -55,6 +56,7 @@ class ThumbnailLabel(QWidget):
         self._image.setFixedSize(width, height)
         self._image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image.setAutoFillBackground(False)
+        self._image.setContentsMargins(0, 0, 0, 0)
         self._spinner = LoadingSpinner(40, self)
         self._badge = QLabel(self)
         self._badge.setObjectName("durationBadge")

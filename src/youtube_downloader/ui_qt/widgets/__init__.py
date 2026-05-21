@@ -26,6 +26,7 @@ from youtube_downloader.ui_qt.widgets.empty_state import EmptyState
 from youtube_downloader.ui_qt.widgets.download_progress_strip import DownloadProgressStrip
 from youtube_downloader.ui_qt.widgets.media_preview_row import MediaPreviewRow
 from youtube_downloader.ui_qt.widgets.page_header import PageHeader
+from youtube_downloader.ui_qt.widgets.queue_now_playing import QueueNowPlayingCard
 from youtube_downloader.ui_qt.widgets.preview_skeleton import PreviewSkeleton
 from youtube_downloader.ui_qt.widgets.section import SectionTitle, Separator
 from youtube_downloader.ui_qt.widgets.segmented_control import SegmentedControl
@@ -46,6 +47,7 @@ __all__ = [
     "LinkButton",
     "MediaPreviewRow",
     "PageHeader",
+    "QueueNowPlayingCard",
     "PreviewSkeleton",
     "PreviewEmptyPanel",
     "PrimaryButton",

@@ -135,6 +135,11 @@ class MediaPreviewRow(QFrame):
     def set_pixmap(self, pixmap: QPixmap) -> None:
         self._thumb.set_pixmap(pixmap)
 
+    def set_thumb_placeholder(self, text: str = "…") -> None:
+        """Update only the thumbnail area (does not change title/meta)."""
+        self._stop_loading_animation()
+        self._thumb.set_placeholder_text(text)
+
     def clear(self) -> None:
         self.set_options_visible(False)
         self._stop_loading_animation()

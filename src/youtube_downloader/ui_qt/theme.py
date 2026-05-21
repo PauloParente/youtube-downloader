@@ -65,9 +65,15 @@ QFrame#card QWidget#downloadOptionsBar,
 QFrame#card QWidget#segmentedControl {{
     background-color: transparent;
 }}
-QFrame#thumb, QLabel#thumb {{
+QWidget#thumbSlot {{
     background-color: {p.surface_elevated};
     border-radius: {RADIUS_THUMB}px;
+}}
+QLabel#thumb {{
+    background-color: transparent;
+    border: none;
+    padding: 0px;
+    margin: 0px;
 }}
 QLabel#brandIcon {{
     background-color: {p.sidebar_bg};

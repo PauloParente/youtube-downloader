@@ -58,11 +58,10 @@ from youtube_downloader.ui_qt.playlist_choice_dialog import ask_video_in_playlis
 from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
 from youtube_downloader.ui_qt.theme import polish_widget
 from youtube_downloader.ui_qt.theme_tokens import PAGE_MARGINS, SPACE_LG, SPACE_SM
-from youtube_downloader.ui_qt.util import pixmap_from_bytes, run_on_main, schedule
+from youtube_downloader.ui_qt.util import run_on_main, schedule
 from youtube_downloader.ui_qt.widgets.url_drop_line_edit import UrlDropLineEdit
 from youtube_downloader.ui_qt.widgets import (
     DownloadOptionsBar,
-    DownloadProgressStrip,
     GhostButton,
     IconButton,
     LinkButton,
@@ -295,8 +294,6 @@ class DownloadsView(QWidget):
 
     def _update_progress_percent(self, percent: Optional[float]) -> None:
         self._last_progress_percent = percent
-        if hasattr(self, "_progress_strip"):
-            self._progress_strip.set_percent(percent)
 
     def _toggle_log_panel(self) -> None:
         if self._log_body is None:
@@ -369,46 +366,6 @@ class DownloadsView(QWidget):
                 self._download_btn.setObjectName("primaryOutline")
                 self._download_btn.setToolTip("Cole um link do YouTube válido")
         polish_widget(self._download_btn)
-
-    def _sync_progress_context(self) -> None:
-        title = self._now_playing_title or ""
-        if not title:
-            preview = self._current_preview()
-            if preview and preview.title:
-                title = preview.title
-        if not title:
-            url = self._url_entry.text().strip()
-            title = truncate_text(url, 50) if url else "Baixando…"
-        url = self._url_entry.text().strip()
-        thumb = None
-        if url:
-            cached = self._preview_cache.get(url)
-            if cached and cached.thumbnail_bytes:
-                thumb = pixmap_from_bytes(cached.thumbnail_bytes, (64, 36))
-        self._progress_strip.set_context(title, thumb)
-
-    def _sync_progress_indeterminate(self, status_text: str = "") -> None:
-        text = status_text or (
-            self._status_label.text() if hasattr(self, "_status_label") else ""
-        )
-        busy = self._expanding_playlist or any(
-            k in text.casefold()
-            for k in ("playlist", "preparando", "obter vídeos", "pulando")
-        )
-        self._progress_strip.set_indeterminate(busy)
-
-    def _sync_progress_strip(self) -> None:
-        active = self._is_downloading or self._expanding_playlist
-        self._progress_strip.set_active(active)
-        if active:
-            self._sync_progress_context()
-            self._sync_progress_indeterminate()
-            self._cancel_btn.hide()
-        else:
-            self._progress_strip.set_indeterminate(False)
-            self._progress_strip.set_percent(0)
-            self._sync_action_buttons()
-            self._sync_download_button()
 
     def _bind_shortcuts(self) -> None:
         QShortcut(QKeySequence(Qt.Key.Key_Return), self, self._shortcut_start)
@@ -513,9 +470,6 @@ class DownloadsView(QWidget):
         self._options_bar = DownloadOptionsBar(on_changed=self._on_options_changed)
         self._set_quality_combo(QUALITY_OPTIONS[0])
         self._preview_panel.attach_to(scroll_layout, options_bar=self._options_bar)
-
-        self._progress_strip = DownloadProgressStrip(on_cancel=self._cancel_download)
-        scroll_layout.addWidget(self._progress_strip)
 
         log_header = QHBoxLayout()
         self._log_toggle_btn = QPushButton()
@@ -656,7 +610,6 @@ class DownloadsView(QWidget):
             self._status_reset_after_id = None
         elif not self._is_downloading:
             self._schedule_status_reset()
-        self._sync_progress_strip()
         self._sync_download_button()
         if self._is_downloading:
             return
@@ -821,9 +774,6 @@ class DownloadsView(QWidget):
 
     def _set_download_status(self, text: str) -> None:
         self._status_label.setText(text)
-        if self._is_downloading or self._expanding_playlist:
-            self._progress_strip.set_message(text)
-            self._sync_progress_indeterminate(text)
 
     def _reset_download_status(self) -> None:
         self._status_reset_after_id = None
@@ -889,7 +839,6 @@ class DownloadsView(QWidget):
         self._enqueue_btn.setEnabled(enabled)
         self._download_btn.setEnabled(enabled)
         self._sync_action_buttons()
-        self._sync_progress_strip()
         self._sync_download_button()
 
     def _has_pending_queue(self) -> bool:
@@ -913,7 +862,6 @@ class DownloadsView(QWidget):
         self._last_progress_percent = 0.0
         self._set_download_status("Preparando próximo da fila…")
         self._sync_action_buttons()
-        self._sync_progress_strip()
         self._on_sync_now_playing()
 
     def _release_download_ui(self) -> None:
@@ -924,7 +872,6 @@ class DownloadsView(QWidget):
         self._set_controls_enabled(True)
         self._schedule_status_reset()
         self._sync_queue_ui()
-        self._sync_progress_strip()
         self._sync_download_button()
 
     def _start_download(self) -> None:
@@ -986,9 +933,7 @@ class DownloadsView(QWidget):
         start_label = self._get_preview_title_for_log() or truncate_text(cleaned, 60)
         self._append_log(f"Iniciando download: {start_label}")
         self._set_download_status("Baixando…")
-        self._sync_progress_context()
         self._sync_action_buttons()
-        self._sync_progress_strip()
         if self._preview_panel is not None:
             self._preview_panel.hide_alert()
         self._sync_queue_ui()
