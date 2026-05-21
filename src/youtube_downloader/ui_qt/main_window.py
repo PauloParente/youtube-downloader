@@ -62,6 +62,7 @@ from youtube_downloader.core.queue_coordinator import (
     should_start_next_job,
     should_sync_queue_structure,
 )
+from youtube_downloader.core.appearance import normalize_appearance_mode
 from youtube_downloader.core.settings import AppSettings, load_settings, save_settings
 from youtube_downloader.ui_qt.about_dialog import show_about_dialog
 from youtube_downloader.ui_qt.download_worker import start_download_thread
@@ -224,7 +225,11 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
         root.addWidget(body, stretch=1)
 
-        self._sidebar = NavSidebar(self._on_nav_select, self._show_about)
+        self._sidebar = NavSidebar(
+            self._on_nav_select,
+            self._show_about,
+            on_appearance_changed=self._set_appearance_mode,
+        )
         layout.addWidget(self._sidebar)
 
         sep = QFrame()
@@ -297,7 +302,10 @@ class MainWindow(QMainWindow):
         self._history_view.set_entries(self._history_entries)
         self._stack.addWidget(self._history_view)
 
-        self._settings_view = SettingsView(on_save=self._on_settings_saved)
+        self._settings_view = SettingsView(
+            on_save=self._on_settings_saved,
+            on_appearance_changed=self._set_appearance_mode,
+        )
         self._settings_view.load_settings(self._settings)
         self._stack.addWidget(self._settings_view)
 
@@ -663,16 +671,34 @@ class MainWindow(QMainWindow):
             )
         self._ffmpeg_banner_shown = True
 
+    def _set_appearance_mode(self, mode: str) -> None:
+        mode = normalize_appearance_mode(mode, self._settings.appearance_mode)
+        if mode == self._settings.appearance_mode:
+            return
+        self._settings = replace(self._settings, appearance_mode=mode)
+        save_settings(self._settings)
+        apply_theme(QApplication.instance(), mode)
+        if self._title_bar is not None:
+            self._title_bar.refresh_control_icons()
+        if self._sidebar is not None:
+            self._sidebar.set_appearance_mode(mode)
+            self._sidebar.refresh_theme()
+        if self._settings_view is not None:
+            self._settings_view.sync_appearance_mode(mode)
+            self._settings_view.refresh_section_icons()
+
     def _apply_settings(self, settings: AppSettings) -> None:
         apply_theme(QApplication.instance(), settings.appearance_mode)
         if self._title_bar is not None:
             self._title_bar.refresh_control_icons()
         if self._sidebar is not None:
+            self._sidebar.set_appearance_mode(settings.appearance_mode)
             self._sidebar.refresh_theme()
         if self._downloads_view:
             self._downloads_view.apply_settings(settings)
         if self._settings_view:
             self._settings_view.load_settings(settings)
+            self._settings_view.refresh_section_icons()
 
     def _persist_settings(self) -> None:
         if self._downloads_view is None:
@@ -813,8 +839,9 @@ def run() -> None:
     logger.info("Aplicativo iniciado (PySide6)")
 
     app = QApplication.instance() or QApplication([])
-    app.setStyle("Fusion")
-    splash = SplashScreen()
+    startup_settings = load_settings()
+    apply_theme(app, startup_settings.appearance_mode)
+    splash = SplashScreen(appearance_mode=startup_settings.appearance_mode)
     splash.show()
     app.processEvents()
 

@@ -16,6 +16,7 @@ def test_dark_qss_contains_tokens() -> None:
 def test_light_qss_parity() -> None:
     qss = build_light_qss()
     assert LIGHT.app_bg in qss
+    assert "QPushButton#appearanceToggle" in qss
     assert "QFrame#navPill" in qss
     assert "border-left: 2px solid" in qss
     assert "QLabel#navBadge" in qss
@@ -56,3 +57,4 @@ def test_dark_qss_new_selectors() -> None:
     assert "titleBarButtonClose:pressed" in qss
     assert "QFrame#card QWidget#downloadOptionsBar" in qss
     assert "QFrame#card QWidget#segmentedControl" in qss
+    assert "QPushButton#appearanceToggle" in qss

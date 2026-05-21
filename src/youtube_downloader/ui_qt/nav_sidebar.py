@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from youtube_downloader.ui_qt.icons import icon_on_button
 from youtube_downloader.ui_qt.nav_registry import DEFAULT_VIEW_ID, NAV_ITEMS
 from youtube_downloader.ui_qt.nav_shortcuts import format_queue_badge, nav_tooltip
 from youtube_downloader.ui_qt.theme import polish_widget
-from youtube_downloader.ui_qt.theme_tokens import SIDEBAR_WIDTH
-from youtube_downloader.ui_qt.widgets import Separator
+from youtube_downloader.ui_qt.theme_tokens import NAV_ITEM_HEIGHT, SIDEBAR_WIDTH
+from youtube_downloader.ui_qt.widgets import AppearanceToggle, Separator
 from youtube_downloader.ui_qt.widgets.nav_button import NavButton
 from youtube_downloader.ui_qt.widgets.nav_list import NavListWidget
 
@@ -24,6 +25,7 @@ class NavSidebar(QFrame):
         self,
         on_select: Callable[[str], None],
         on_about: Callable[[], None],
+        on_appearance_changed: Callable[[str], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -31,6 +33,7 @@ class NavSidebar(QFrame):
         self.setFixedWidth(SIDEBAR_WIDTH)
         self._on_select = on_select
         self._on_about = on_about
+        self._on_appearance_changed = on_appearance_changed
         self._active_id = DEFAULT_VIEW_ID
         self._icon_names: dict[str, str] = {}
 
@@ -39,6 +42,10 @@ class NavSidebar(QFrame):
         layout.setSpacing(6)
 
         self._nav_list = NavListWidget()
+        self._nav_list.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
+        )
         layout.addWidget(self._nav_list)
 
         self._queue_badge = QLabel()
@@ -57,15 +64,33 @@ class NavSidebar(QFrame):
             badge = self._queue_badge if item.view_id == "queue" else None
             self._nav_list.add_item(item.view_id, btn, badge=badge)
 
-        layout.addStretch()
+        layout.addStretch(1)
 
         layout.addWidget(Separator())
+
+        footer_row = QHBoxLayout()
+        footer_row.setContentsMargins(0, 0, 0, 0)
+        footer_row.setSpacing(6)
+
         about_btn = NavButton("Sobre", focusable=False)
         about_btn.setToolTip("Sobre")
         icon_on_button(about_btn, "about", size=18)
         about_btn.clicked.connect(on_about)
-        about_btn.setFixedHeight(40)
-        layout.addWidget(about_btn)
+        about_btn.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
+        )
+        about_btn.setFixedHeight(NAV_ITEM_HEIGHT)
+        footer_row.addWidget(about_btn, stretch=1)
+
+        self._appearance_toggle = AppearanceToggle(
+            on_mode_changed=self._on_appearance_toggle,
+        )
+        footer_row.addWidget(
+            self._appearance_toggle,
+            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
+        layout.addLayout(footer_row)
 
     def active_view_id(self) -> str:
         return self._active_id
@@ -106,7 +131,15 @@ class NavSidebar(QFrame):
         )
         self._sync_queue_badge_style()
 
+    def _on_appearance_toggle(self, mode: str) -> None:
+        if self._on_appearance_changed is not None:
+            self._on_appearance_changed(mode)
+
+    def set_appearance_mode(self, mode: str) -> None:
+        self._appearance_toggle.set_mode(mode)
+
     def refresh_theme(self) -> None:
         self._sync_nav_icons()
+        self._appearance_toggle.refresh_icons()
         for button in self._nav_list.iter_buttons():
             button.update()

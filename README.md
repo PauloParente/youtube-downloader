@@ -113,6 +113,7 @@ Ao abrir, uma **tela de splash** (logo, nome e mensagem de carregamento) é exib
 - Página **Histórico** — cards com thumbnail, nome do canal (link para o YouTube) e botão para abrir o vídeo no site (`history.json`); abrir arquivo/pasta, **Baixar de novo**, remover ou **Limpar histórico** (não apaga arquivos no disco)
 - Botões **Abrir pasta** / **Abrir arquivo** após cada download na tela Downloads
 - Página **Configurações** com cards Geral, Qualidade e Formato, Avançado
+- **Tema claro/escuro**: botão discreto lua/sol na sidebar (à direita, junto a **Sobre**), aplica e grava na hora; opção **Modo escuro** em Configurações (mesmo efeito)
 - Atalhos: `Ctrl+V` colar URL; `Ctrl+,` ou **Configurações** na sidebar; **Sobre** no rodapé da sidebar
 - Cancelamento de download em andamento
 - Janela redimensionável (tamanho mínimo ~900×680): na tela **Downloads**, o conteúdo superior rola e os botões **Baixar** / **Cancelar** permanecem fixos no rodapé

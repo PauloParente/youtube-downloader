@@ -81,6 +81,7 @@ Padding interno de card: 16px (`Card` / QSS).
 | Primário outline | `primaryOutline` | Baixar quando URL inválida |
 
 | Switch | `switch` | Checkboxes estilo toggle (Configurações) |
+| Tema claro/escuro | `appearanceToggle` | Botão ícone único na linha do **Sobre** (lua/sol, alinhado à direita); persiste `appearance_mode` em `settings.json` |
 | Banner de status | `statusBanner` / `statusBannerSlot` | Avisos FFmpeg no topo do conteúdo; slot com margem 16px (laterais) e 8px (vertical) |
 | Filtro de lista | `filterInput` | Histórico / Biblioteca |
 | Linha compacta | `compactRow` | Histórico, Fila pendente, Biblioteca |
@@ -88,7 +89,7 @@ Padding interno de card: 16px (`Card` / QSS).
 | Alerta de erro (Downloads) | `downloadAlert` | Banner dismissível acima do preview |
 | Chip pasta destino | `destinationChip` | Action dock — abre pasta de download |
 
-Widgets reutilizáveis: `PreviewSkeleton`, `MediaPreviewRow`, `CompactMediaRow`, `EmptyState`, `DownloadAlert`, `StatusBanner`, `UrlDropLineEdit`, `DownloadOptionsBar`, `DownloadProgressStrip`, `SegmentedControl` em `ui_qt/widgets/`.
+Widgets reutilizáveis: `AppearanceToggle`, `PreviewSkeleton`, `MediaPreviewRow`, `CompactMediaRow`, `EmptyState`, `DownloadAlert`, `StatusBanner`, `UrlDropLineEdit`, `DownloadOptionsBar`, `DownloadProgressStrip`, `SegmentedControl` em `ui_qt/widgets/`.
 
 Raios: `RADIUS_CARD=10`, `RADIUS_BUTTON` / `RADIUS_INPUT=8`. Fonte base: `FONT_BODY=13`, família `Segoe UI Variable`.
 
@@ -103,7 +104,7 @@ Helper `field_label(text)` — mesmo estilo que `class="fieldLabel"`.
 
 ## Tema em runtime
 
-`apply_theme(app, "dark"|"light")` define estilo Fusion + QSS + paleta. Após mudar `class` em widgets, chamar `polish_widget(widget)`.
+`apply_theme(app, "dark"|"light")` define estilo Fusion + QSS + paleta. O atalho na sidebar chama `MainWindow._set_appearance_mode` (grava `settings.json` e atualiza ícones da title bar, nav e cabeçalhos de Configurações). Após mudar `class` em widgets, chamar `polish_widget(widget)`.
 
 ## QA visual (checklist)
 

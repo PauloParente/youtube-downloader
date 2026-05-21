@@ -25,6 +25,7 @@ from youtube_downloader.config import (
     QUALITY_FROM_DISPLAY,
     QUALITY_OPTIONS,
 )
+from youtube_downloader.core.appearance import appearance_mode_from_dark_enabled
 from youtube_downloader.core.settings import AppSettings
 from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
 from youtube_downloader.ui_qt.theme_tokens import PAGE_MARGINS
@@ -64,10 +65,13 @@ class SettingsView(QWidget):
     def __init__(
         self,
         on_save: Callable[[AppSettings], None],
+        on_appearance_changed: Callable[[str], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._on_save = on_save
+        self._on_appearance_changed = on_appearance_changed
+        self._section_icons: list[tuple[QLabel, str]] = []
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -101,6 +105,7 @@ class SettingsView(QWidget):
         self._dark_check = QCheckBox("Modo escuro")
         self._dark_check.setObjectName("switch")
         self._dark_check.setChecked(True)
+        self._dark_check.toggled.connect(self._on_dark_check_toggled)
         gl.addWidget(self._dark_check)
         gl.addWidget(field_label("Idioma das legendas"))
         self._language_combo = QComboBox()
@@ -178,11 +183,27 @@ class SettingsView(QWidget):
         dock_layout.addLayout(btn_row)
         outer.addWidget(dock)
 
+    def _on_dark_check_toggled(self, checked: bool) -> None:
+        if self._on_appearance_changed is not None:
+            self._on_appearance_changed(appearance_mode_from_dark_enabled(checked))
+
+    def sync_appearance_mode(self, mode: str) -> None:
+        self._dark_check.blockSignals(True)
+        try:
+            self._dark_check.setChecked(mode == "dark")
+        finally:
+            self._dark_check.blockSignals(False)
+
+    def refresh_section_icons(self) -> None:
+        for icon_lbl, icon_name in self._section_icons:
+            icon_lbl.setPixmap(themed_icon(icon_name, 20).pixmap(20, 20))
+
     def _card(self, icon_name: str, title: str, parent_layout: QVBoxLayout) -> QWidget:
         card = Card()
         header_row = QHBoxLayout()
         icon_lbl = QLabel()
         icon_lbl.setPixmap(themed_icon(icon_name, 20).pixmap(20, 20))
+        self._section_icons.append((icon_lbl, icon_name))
         header_row.addWidget(icon_lbl)
         title_lbl = QLabel(title)
         title_lbl.setObjectName("cardSectionTitle")
@@ -205,7 +226,7 @@ class SettingsView(QWidget):
 
     def load_settings(self, settings: AppSettings) -> None:
         self._folder_entry.setText(settings.output_dir)
-        self._dark_check.setChecked(settings.appearance_mode == "dark")
+        self.sync_appearance_mode(settings.appearance_mode)
         self._language_combo.setCurrentText(
             _LANGUAGE_TO_LABEL.get(settings.language, _LANGUAGE_OPTIONS[0])
         )

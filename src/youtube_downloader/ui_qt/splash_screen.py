@@ -7,7 +7,14 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication, QLabel, QSplashScreen, QVBoxLayout, QWidget
 
 from youtube_downloader.config import APP_TITLE, APP_VERSION, SPLASH_LOGO_PATH, SPLASH_SIZE
-from youtube_downloader.ui_qt.theme_tokens import ACCENT_MUTED, DARK, FONT_CAPTION, FONT_PAGE_TITLE
+from youtube_downloader.ui_qt.theme_tokens import (
+    ACCENT_MUTED,
+    DARK,
+    FONT_CAPTION,
+    FONT_PAGE_TITLE,
+    LIGHT,
+    ThemePalette,
+)
 from youtube_downloader.ui_qt.widgets import secondary_label
 
 
@@ -26,8 +33,11 @@ def center_on_screen(widget: QWidget) -> None:
     widget.move(x, y)
 
 
-def _splash_stylesheet() -> str:
-    p = DARK
+def _palette_for_mode(appearance_mode: str) -> ThemePalette:
+    return LIGHT if appearance_mode == "light" else DARK
+
+
+def _splash_stylesheet(p: ThemePalette) -> str:
     return f"""
         QWidget {{
             background: qlineargradient(
@@ -52,11 +62,12 @@ def _splash_stylesheet() -> str:
     """
 
 
-def _build_splash_pixmap(width: int, height: int) -> QPixmap:
+def _build_splash_pixmap(width: int, height: int, appearance_mode: str = "dark") -> QPixmap:
     """Render splash content into a pixmap (QSplashScreen only paints pixmaps)."""
     content = QWidget()
     content.setFixedSize(width, height)
-    content.setStyleSheet(_splash_stylesheet())
+    p = _palette_for_mode(appearance_mode)
+    content.setStyleSheet(_splash_stylesheet(p))
 
     layout = QVBoxLayout(content)
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -83,12 +94,13 @@ def _build_splash_pixmap(width: int, height: int) -> QPixmap:
 class SplashScreen:
     """Frameless splash shown while the main window loads."""
 
-    def __init__(self) -> None:
+    def __init__(self, appearance_mode: str = "dark") -> None:
         self._width, self._height = parse_window_size(SPLASH_SIZE)
+        self._appearance_mode = appearance_mode
         self._splash: QSplashScreen | None = None
 
     def show(self) -> None:
-        pixmap = _build_splash_pixmap(self._width, self._height)
+        pixmap = _build_splash_pixmap(self._width, self._height, self._appearance_mode)
         self._splash = QSplashScreen(pixmap)
         self._splash.setWindowFlags(
             Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint
