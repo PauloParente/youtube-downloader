@@ -409,7 +409,6 @@ class MainWindow(QMainWindow):
         if self._queue_view is None or self._downloads_view is None:
             return
         meta = self._downloads_view.get_now_playing_meta()
-        self._queue_view.set_thumbnail_bytes(meta.get("thumbnail_bytes"))
         self._queue_view.set_now_playing(
             active=meta["active"],
             url=meta["url"],
@@ -779,6 +778,7 @@ class MainWindow(QMainWindow):
             )
             return
         self._active_download_job = job
+        self._switch_view("queue")
         self._qthread = start_download_thread(
             self._downloader,
             job,

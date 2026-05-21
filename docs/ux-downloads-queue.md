@@ -6,10 +6,10 @@ Especificação do comportamento da tela **Downloads**, da tela **Fila** na side
 
 | Tela | Conteúdo |
 |------|----------|
-| **Downloads** | Hero URL (validação visual, colar, **arrastar link**, + Fila, **Ver fila (N)**), preview (`EmptyState` vazio / skeleton / row), alerta de erro inline, barra **Vídeo \| Áudio** + qualidade, faixa de progresso com miniatura+título, drawer **Atividade** (compacto quando fechado), action dock (chip pasta destino, status humanizado, Baixar) |
-| **Fila** (sidebar) | Card *Baixando agora*: miniatura, título, URL, status, barra, %, **Cancelar**, **Pular**; *Na fila*: cards (estilo Histórico) com miniatura, título, duração e remover |
+| **Downloads** | Hero URL (validação visual, colar, **arrastar link**, + Fila, **Ver fila (N)**), preview (`EmptyState` vazio / skeleton / row), alerta de erro inline, barra **Vídeo \| Áudio** + qualidade, drawer **Atividade** (compacto quando fechado), action dock (chip pasta destino, status humanizado, Baixar) |
+| **Fila** (sidebar) | `QueueNowPlayingCard` (*Baixando agora*): `#surfaceInset` com miniatura 128×72 + coluna título/URL/status/%; barra de progresso em largura total; **Cancelar** / **Pular**. *Na fila*: `CompactMediaRow` (igual Histórico) com remover |
 
-A lista de pendentes fica na tela **Fila**. A faixa de progresso na Downloads complementa o card *Baixando agora* (cancelar na faixa durante o download).
+A lista de pendentes e o progresso do download em curso ficam na tela **Fila** (card *Baixando agora*). Na Downloads, o dock inferior mostra apenas mensagens de status resumidas (ex. “Baixando…”, “Download concluído.”).
 
 ## Modelo
 
@@ -32,7 +32,7 @@ Um único vídeo sem enfileirar = fila vazia na lista + **Baixar** no campo. Nã
 
 - Mensagens yt-dlp mapeadas em português via `core/download_errors.humanize_ytdlp_error` (log técnico mantido em **Atividade**).
 - Erro de download: status no dock + banner `#downloadAlert` acima do preview.
-- Faixa `#progressStrip`: miniatura, título, % ou modo indeterminado (playlist / preparar fila).
+- Progresso (% e barra): card *Baixando agora* na tela **Fila** (modo indeterminado ao expandir playlist ou preparar próximo da fila).
 
 ## Atalhos (tela Downloads com foco)
 
@@ -60,6 +60,8 @@ Um único vídeo sem enfileirar = fila vazia na lista + **Baixar** no campo. Nã
 - Opções da tela Downloads aplicam ao próximo job ao baixar; Configurações avançadas após **Salvar** (ver AGENTS.md).
 
 ## Durante download
+
+Ao iniciar um job (`_run_download_job`), a janela muda automaticamente para a tela **Fila** (inclui o primeiro vídeo e os seguintes da fila).
 
 | Controle | Onde | Estado |
 |----------|------|--------|

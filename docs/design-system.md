@@ -79,7 +79,7 @@ Padding interno de card: 16px (`Card` / QSS).
 | Toggle de secção | `sectionToggle` | Colapsar ATIVIDADE (Downloads) |
 | Campo URL hero | `urlHero` | Input principal na tela Downloads (`INPUT_HERO_HEIGHT`) |
 | Linha URL + ações | `urlToolRow` | Colar, + Fila, ícones — mesma altura que `urlHero` |
-| Faixa de progresso | `progressStrip` | Download em curso na Downloads |
+| Faixa de progresso (legado) | `progressStrip` | Widget `DownloadProgressStrip` — não usado na UI; progresso na tela **Fila** |
 | Skeleton preview | `skeletonLine` | Placeholder de metadados |
 | Action dock | `actionDock` | Rodapé fixo: linha 1 status + atalhos; linha 2 pasta/ações/Baixar |
 | Segmentado | `segment` | Vídeo / Áudio (`SegmentedControl`) |
@@ -90,12 +90,13 @@ Padding interno de card: 16px (`Card` / QSS).
 | Banner de status | `statusBanner` / `statusBannerSlot` | Avisos FFmpeg no topo do conteúdo; slot com margem 16px (laterais) e 8px (vertical) |
 | Filtro de lista | `filterInput` | Histórico / Biblioteca |
 | Linha compacta | `compactRow` | Histórico, Fila pendente, Biblioteca |
+| Baixando agora (Fila) | `QueueNowPlayingCard` | `#card` + `#surfaceInset`: miniatura 128×72, título/URL/status, barra full-width, Cancelar/Pular |
 | Estado vazio (listas) | — | `EmptyState` (ícone + título + CTA opcional) |
 | Preview vazio tracejado | `previewEmpty` | `PreviewEmptyPanel` na tela Downloads |
 | Alerta de erro (Downloads) | `downloadAlert` | Banner dismissível acima do preview |
 | Chip pasta destino | `destinationChip` | Action dock — abre pasta de download |
 
-Widgets reutilizáveis: `AppearanceToggle`, `PreviewSkeleton`, `PreviewEmptyPanel`, `MediaPreviewRow`, `CompactMediaRow`, `EmptyState`, `DownloadAlert`, `StatusBanner`, `UrlDropLineEdit`, `DownloadOptionsBar`, `DownloadProgressStrip`, `SegmentedControl`, `SecondaryButton` em `ui_qt/widgets/`.
+Widgets reutilizáveis: `AppearanceToggle`, `PreviewSkeleton`, `PreviewEmptyPanel`, `MediaPreviewRow`, `CompactMediaRow`, `QueueNowPlayingCard`, `EmptyState`, `DownloadAlert`, `StatusBanner`, `UrlDropLineEdit`, `DownloadOptionsBar`, `DownloadProgressStrip`, `SegmentedControl`, `SecondaryButton` em `ui_qt/widgets/`.
 
 Raios: `RADIUS_CARD=10`, `RADIUS_BUTTON` / `RADIUS_INPUT=8`. Fonte base: `FONT_BODY=13`, família `Segoe UI Variable`.
 

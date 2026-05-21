@@ -32,7 +32,9 @@ def pixmap_from_pil(img, size: Optional[tuple[int, int]] = None) -> QPixmap:
     return QPixmap.fromImage(qimg)
 
 
-def pixmap_from_bytes(data: bytes, size: tuple[int, int]) -> Optional[QPixmap]:
+def pixmap_from_bytes(
+    data: bytes, size: Optional[tuple[int, int]] = None
+) -> Optional[QPixmap]:
     try:
         base = pil_rgb_from_bytes(data)
         return pixmap_from_pil(base, size)
