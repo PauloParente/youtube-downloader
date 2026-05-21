@@ -20,7 +20,7 @@ Playbook de **estrutura**, não de feature nova. Regra: [`.cursor/rules/refactor
 ## Workflow
 
 ```text
-- [ ] 1. Branch a partir de main (youtube-downloader-git)
+- [ ] 1. Verificar branch atual e branches existentes; manter, trocar ou criar `refactor/...` a partir de main (youtube-downloader-git, *Antes de editar código*)
 - [ ] 2. Identificar bloco (UI → ui_qt/; puro → core/)
 - [ ] 3. Copiar/mover; shell deixa callbacks + registro
 - [ ] 4. python -m pytest

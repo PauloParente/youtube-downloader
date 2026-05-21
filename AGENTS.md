@@ -150,7 +150,7 @@ Protocolo completo: **[docs/git-workflow.md](docs/git-workflow.md)**. Regra Curs
 | Branches | `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, `ci/` + kebab-case (inglês) |
 | Um assunto por branch | **Uma branch = um PR**; após merge, trabalho novo → branch nova a partir de `main` |
 | Commits | **Conventional Commits** obrigatórios — `feat(ui): …`, `fix(core): …`, etc. |
-| Agentes | Commit, push e PR **somente** se o usuário pedir; antes: validar branch + ficheiros (`youtube-downloader-git`); `pytest` antes de PR |
+| Agentes | **Antes de codar:** verificar branch atual, `git branch -a` e decidir manter/trocar/criar (`youtube-downloader-git`). Commit, push e PR **somente** se o usuário pedir; antes de commit: validar branch + ficheiros; `pytest` antes de PR |
 | Proibido | Push/force-push em `main`; commitar `settings.json`, `logs/`, `.venv/`, `dist/`, credenciais; misturar assuntos na mesma branch |
 
 Fluxo sugerido: implementar → `pytest` → `youtube-downloader-code-review` (diff grande) → PR (`youtube-downloader-git`).

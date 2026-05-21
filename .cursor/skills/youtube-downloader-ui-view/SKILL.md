@@ -11,6 +11,10 @@ disable-model-invocation: true
 
 Playbook para telas e widgets. Fluxo fila/Baixar/cancelar: [docs/ux-downloads-queue.md](../../../docs/ux-downloads-queue.md). Threading: [AGENTS.md](../../../AGENTS.md). Regras Qt: [`.cursor/rules/ui-qt.mdc`](../../rules/ui-qt.mdc).
 
+## Antes de codar
+
+- [ ] **Git:** verificar branch atual e branches existentes; manter, trocar ou criar branch para o assunto **antes** de editar ficheiros (`youtube-downloader-git`).
+
 ## Onde colocar código
 
 | O quê | Onde |

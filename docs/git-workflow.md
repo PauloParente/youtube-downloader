@@ -163,6 +163,17 @@ git push origin v1.2.0
 - **Commit, push e PR somente quando o usuário pedir explicitamente.**
 - Nunca `git config`, nunca `--no-verify`, nunca force-push em `main`.
 
+### Antes de editar código (obrigatório)
+
+Agentes **não** devem começar a implementar sem verificar Git:
+
+1. `git fetch origin`, `git branch --show-current`, `git branch -a`, `git status`, `git log -5 --oneline`
+2. Comparar o **pedido atual** com o nome da branch e commits locais (`git log origin/main..HEAD`, `git diff origin/main...HEAD` se útil)
+3. **Decidir:** manter a branch (mesmo assunto em curso), fazer checkout de branch existente para o mesmo assunto, ou criar branch nova a partir de `main` (`git pull` + `git checkout -b <tipo>/<assunto>`)
+4. **Comunicar** ao usuário a branch escolhida e o motivo antes da primeira alteração de ficheiro
+
+Tabela completa e recuperação com stash: skill `youtube-downloader-git` (*Antes de editar código*).
+
 ### Evitar confusão ao trocar de branch
 
 Problema comum: código do **assunto B** desenvolvido na branch do **assunto A**, ou commit após o PR de A já ter sido mergeado em `main`.
@@ -171,6 +182,7 @@ Problema comum: código do **assunto B** desenvolvido na branch do **assunto A**
 |-------|---------|
 | Um assunto por branch | Ex.: splash → `fix/ui-splash-screen`; URL → `fix/ui-url-tool-row-align` (branches separadas) |
 | Novo assunto após merge | `git checkout main` + `git pull` + **branch nova** — não reutilizar branch mergeada |
+| Antes de codar | Verificar branch atual, `git branch -a`, decidir manter/trocar/criar; comunicar branch ao usuário |
 | Antes de commit/push | Verificar `git branch --show-current`, `git status`, `git diff`; commitar só ficheiros do assunto |
 | Branch errada | `git stash push` (caminhos específicos) → `main` → branch nova → `stash pop` — ver skill `youtube-downloader-git` |
 | Comunicação | Agente informa branch, ficheiros no commit e URL do PR antes de push |
@@ -180,7 +192,8 @@ Evitar `git add -A` quando o working tree mistura alterações de tarefas difere
 ## Fluxo completo sugerido
 
 ```text
-implementar → pytest → youtube-downloader-code-review (se necessário)
+verificar branch (atual + existentes) → decidir manter/trocar/criar → implementar
+  → pytest → youtube-downloader-code-review (se necessário)
   → commit(s) convencionais → push → PR → CI verde → squash merge → limpar branch
 ```
 

@@ -13,9 +13,10 @@ Playbook para **corrigir** bugs. Infraestrutura de logging: [AGENTS.md](../../..
 
 ## Antes de editar código
 
-1. Ler as **últimas linhas** de `logs/errors.log` na raiz do projeto (dev) ou ao lado do `.exe` (dist) — pasta via `get_project_root()` em `config.py`.
-2. Se `errors.log` estiver vazio ou sem entrada recente, ler `logs/app.log`.
-3. **Não** assumir a causa só pelo sintoma na UI; **não** commitar arquivos em `logs/`.
+1. **Git:** `git branch --show-current`, `git branch -a`, `git status` — branch alinhada ao bug (`fix/...`)? Se não, trocar/criar antes de editar (`youtube-downloader-git`).
+2. Ler as **últimas linhas** de `logs/errors.log` na raiz do projeto (dev) ou ao lado do `.exe` (dist) — pasta via `get_project_root()` em `config.py`.
+3. Se `errors.log` estiver vazio ou sem entrada recente, ler `logs/app.log`.
+4. **Não** assumir a causa só pelo sintoma na UI; **não** commitar arquivos em `logs/`.
 
 ## Interpretar o stack
 

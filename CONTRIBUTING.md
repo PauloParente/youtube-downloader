@@ -20,6 +20,8 @@ Detalhes em **[docs/git-workflow.md](docs/git-workflow.md)**.
 
 ### Abrir branch
 
+Antes de criar branch, confira a branch atual e as existentes (`git branch -a`) e se faz sentido para o assunto pedido (agentes: skill `youtube-downloader-git`, secção *Antes de editar código*).
+
 ```powershell
 git fetch origin
 git checkout main
