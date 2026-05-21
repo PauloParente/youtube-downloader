@@ -218,7 +218,8 @@ Ver regra [`.cursor/rules/refactoring.mdc`](.cursor/rules/refactoring.mdc).
 
 ## Links
 
-- [README.md](README.md) — instalação, uso, release
+- [README.md](README.md) — download, uso, desenvolvimento
+- [docs/release.md](docs/release.md) — checklist do `.exe` e zip
 - [ROADMAP.md](ROADMAP.md) — backlog de produto
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribuição e resumo Git
 - [docs/git-workflow.md](docs/git-workflow.md) — GitHub Flow, Conventional Commits, PR, tags

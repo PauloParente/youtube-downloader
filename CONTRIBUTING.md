@@ -4,7 +4,7 @@ Obrigado por ajudar no YouTube Downloader.
 
 ## Ambiente
 
-1. Clone o repositório e crie um venv (veja [README.md](README.md) — seção *Começar do zero*).
+1. Clone o repositório e crie um venv (veja [README.md](README.md) — *Desenvolvimento*).
 2. Instale dependências: `pip install -r requirements-lock.txt` (reprodutível) ou `pip install -r requirements.txt -r requirements-dev.txt` (mais recentes dentro dos ranges).
 3. Rode os testes antes de abrir PR: `python -m pytest`.
 
