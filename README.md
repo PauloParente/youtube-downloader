@@ -122,7 +122,7 @@ Veja o backlog futuro em [ROADMAP.md](ROADMAP.md).
 
 1. Na sidebar, abra **Downloads**
 2. Cole a URL do vídeo ou da playlist (`Ctrl+V`)
-3. Escolha a pasta de destino (ou defina o padrão em **Configurações** na sidebar ou `Ctrl+,`)
+3. Defina a pasta de destino em **Configurações** na sidebar (ou `Ctrl+,`) se necessário
 4. Selecione a qualidade ou marque "Somente áudio (MP3)"
 5. Clique em **Baixar** (vídeo único) ou **+ Fila** para enfileirar sem iniciar
 

@@ -10,7 +10,6 @@ import sys
 import threading
 import tkinter as tk
 from collections.abc import Callable
-from tkinter import filedialog
 from typing import Literal, Optional
 
 import customtkinter as ctk
@@ -56,6 +55,7 @@ from youtube_downloader.ui.theme import (
     BTN_DISABLED,
     BTN_SECONDARY,
     BTN_SECONDARY_HOVER,
+    CARD_BORDER,
     CARD_STYLE,
     ENTRY_STYLE,
     FONT_BODY,
@@ -71,6 +71,7 @@ logger = get_logger(__name__)
 PREVIEW_DEBOUNCE_MS = 600
 THUMB_DISPLAY_SIZE = (240, 135)
 SECTION_GAP = 10
+LOG_TEXTBOX_HEIGHT = 160
 QUEUE_URL_TRUNCATE = 58
 DEFAULT_STATUS_TEXT = "Pronto para baixar."
 
@@ -96,7 +97,6 @@ class DownloadsView(ctk.CTkFrame):
         pop_next_queue_url: Callable[[], Optional[str]],
         on_sync_queue_structure: Callable[[], None],
         on_sync_now_playing: Callable[[], None],
-        initial_output_dir: str,
         **kwargs,
     ) -> None:
         super().__init__(master, fg_color="transparent", **kwargs)
@@ -122,7 +122,6 @@ class DownloadsView(ctk.CTkFrame):
         self._is_downloading = False
         self._last_progress_percent: Optional[float] = None
         self._now_playing_title: Optional[str] = None
-        self._output_dir = tk.StringVar(value=initial_output_dir)
         self._preview_after_id: Optional[str] = None
         self._preview_request_id = 0
         self._current_preview: Optional[VideoPreview] = None
@@ -161,7 +160,6 @@ class DownloadsView(ctk.CTkFrame):
         return self._collect_settings()
 
     def apply_settings(self, settings: AppSettings) -> None:
-        self._output_dir.set(settings.output_dir)
         if settings.quality in QUALITY_OPTIONS:
             self._set_quality_combo(settings.quality)
         self._audio_only_var.set(settings.audio_only)
@@ -288,11 +286,11 @@ class DownloadsView(ctk.CTkFrame):
 
     def _show_preview_panel(self, visible: bool) -> None:
         if visible:
-            self._preview_frame.grid(row=0, column=0, padx=(0, 8), sticky="new")
+            self._preview_frame.grid(row=0, column=0, sticky="ew")
             self._preview_placeholder.grid_remove()
         else:
             self._preview_frame.grid_remove()
-            self._preview_placeholder.grid(row=0, column=0, padx=(0, 8), sticky="new")
+            self._preview_placeholder.grid(row=0, column=0, sticky="ew")
 
     def _build_ui(self) -> None:
         self.grid_columnconfigure(0, weight=1)
@@ -354,11 +352,10 @@ class DownloadsView(ctk.CTkFrame):
 
         mid = ctk.CTkFrame(scroll, fg_color="transparent")
         mid.grid(row=2, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
-        mid.grid_columnconfigure(0, weight=3)
-        mid.grid_columnconfigure(1, weight=2)
+        mid.grid_columnconfigure(0, weight=1)
 
         self._preview_placeholder = ctk.CTkFrame(mid, **CARD_STYLE)
-        self._preview_placeholder.grid(row=0, column=0, padx=(0, 8), sticky="new")
+        self._preview_placeholder.grid(row=0, column=0, sticky="ew")
         ctk.CTkLabel(
             self._preview_placeholder,
             text="O preview do vídeo aparecerá aqui",
@@ -414,19 +411,20 @@ class DownloadsView(ctk.CTkFrame):
         )
         self._preview_subtitle_label.pack(fill="x", padx=12, pady=(0, 12))
 
-        opts_card = ctk.CTkFrame(mid, **CARD_STYLE)
-        opts_card.grid(row=0, column=1, sticky="new")
-        opts_card.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(
-            opts_card,
-            text="Opções",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color=TEXT_PRIMARY,
-            anchor="w",
-        ).grid(row=0, column=0, padx=14, pady=(12, 8), sticky="w")
+        ctk.CTkFrame(
+            self._preview_frame,
+            height=1,
+            fg_color=CARD_BORDER,
+            corner_radius=0,
+        ).pack(fill="x", padx=12, pady=(0, 12))
+
+        preview_opts = ctk.CTkFrame(self._preview_frame, fg_color="transparent")
+        preview_opts.pack(fill="x", padx=12, pady=(0, 14))
+        preview_opts.grid_columnconfigure(0, weight=1)
+
         self._audio_only_var = tk.BooleanVar(value=False)
         self._audio_checkbox = ctk.CTkCheckBox(
-            opts_card,
+            preview_opts,
             text="Somente áudio",
             variable=self._audio_only_var,
             command=self._on_options_changed,
@@ -435,16 +433,16 @@ class DownloadsView(ctk.CTkFrame):
             fg_color=ACCENT,
             hover_color=ACCENT_HOVER,
         )
-        self._audio_checkbox.grid(row=1, column=0, padx=14, pady=4, sticky="w")
+        self._audio_checkbox.grid(row=0, column=0, sticky="w", pady=(0, 10))
         ctk.CTkLabel(
-            opts_card,
+            preview_opts,
             text="Qualidade",
             font=ctk.CTkFont(size=12),
             text_color=TEXT_SECONDARY,
             anchor="w",
-        ).grid(row=2, column=0, padx=14, pady=(12, 6), sticky="w")
+        ).grid(row=1, column=0, sticky="w", pady=(0, 6))
         self._quality_combo = ctk.CTkComboBox(
-            opts_card,
+            preview_opts,
             values=QUALITY_COMBO_VALUES,
             state="readonly",
             command=self._on_quality_changed,
@@ -456,40 +454,14 @@ class DownloadsView(ctk.CTkFrame):
             text_color=TEXT_PRIMARY,
         )
         self._set_quality_combo(QUALITY_OPTIONS[0])
-        self._quality_combo.grid(row=3, column=0, padx=14, pady=(0, 14), sticky="ew")
+        self._quality_combo.grid(row=2, column=0, sticky="ew")
 
         bottom = ctk.CTkFrame(scroll, fg_color="transparent")
         bottom.grid(row=3, column=0, padx=cp, pady=(0, SECTION_GAP), sticky="ew")
         bottom.grid_columnconfigure(0, weight=1)
-        bottom.grid_columnconfigure(1, weight=1)
-
-        dest_block = ctk.CTkFrame(bottom, fg_color="transparent")
-        dest_block.grid(row=0, column=0, padx=(0, 8), sticky="ew")
-        dest_block.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(
-            dest_block,
-            text="Pasta de Destino",
-            font=ctk.CTkFont(size=12),
-            text_color=TEXT_SECONDARY,
-            anchor="w",
-        ).grid(row=0, column=0, sticky="w", pady=(0, 6))
-        dest_card = ctk.CTkFrame(dest_block, **CARD_STYLE)
-        dest_card.grid(row=1, column=0, sticky="ew")
-        dest_card.grid_columnconfigure(0, weight=1)
-        path_row = ctk.CTkFrame(dest_card, fg_color="transparent")
-        path_row.grid(row=0, column=0, sticky="ew", padx=12, pady=12)
-        path_row.grid_columnconfigure(0, weight=1)
-        self._folder_entry = ctk.CTkEntry(
-            path_row, textvariable=self._output_dir, state="readonly", **ENTRY_STYLE
-        )
-        self._folder_entry.grid(row=0, column=0, padx=(0, 8), sticky="ew")
-        self._browse_btn = ctk.CTkButton(
-            path_row, text="📁", width=40, command=self._browse_folder, **SECONDARY_BTN
-        )
-        self._browse_btn.grid(row=0, column=1)
 
         log_block = ctk.CTkFrame(bottom, fg_color="transparent")
-        log_block.grid(row=0, column=1, sticky="ew")
+        log_block.grid(row=0, column=0, sticky="ew")
         log_block.grid_columnconfigure(0, weight=1)
         log_header = ctk.CTkFrame(log_block, fg_color="transparent")
         log_header.grid(row=0, column=0, sticky="ew", pady=(0, 6))
@@ -500,8 +472,8 @@ class DownloadsView(ctk.CTkFrame):
         self._log_toggle_btn.grid(row=0, column=0, padx=(0, 6))
         ctk.CTkLabel(
             log_header,
-            text="ATIVIDADE (LOG)",
-            font=ctk.CTkFont(size=11, weight="bold"),
+            text="ATIVIDADE",
+            font=ctk.CTkFont(size=12, weight="bold"),
             text_color=TEXT_SECONDARY,
             anchor="w",
         ).grid(row=0, column=1, sticky="w")
@@ -512,14 +484,16 @@ class DownloadsView(ctk.CTkFrame):
         log_card = ctk.CTkFrame(log_block, **CARD_STYLE)
         log_card.grid(row=1, column=0, sticky="ew")
         log_card.grid_columnconfigure(0, weight=1)
+        log_card.grid_rowconfigure(0, weight=1)
         self._log_body = ctk.CTkFrame(log_card, fg_color="transparent")
-        self._log_body.grid(row=0, column=0, sticky="ew")
+        self._log_body.grid(row=0, column=0, sticky="nsew")
         self._log_body.grid_columnconfigure(0, weight=1)
+        self._log_body.grid_rowconfigure(0, weight=1)
         self._log_box = ctk.CTkTextbox(
             self._log_body,
             state="disabled",
             wrap="word",
-            height=100,
+            height=LOG_TEXTBOX_HEIGHT,
             fg_color=("#161616", "#161616"),
             border_color=CARD_STYLE["border_color"],
             border_width=1,
@@ -872,9 +846,14 @@ class DownloadsView(ctk.CTkFrame):
             self._detach_thumb_image()
             self._configure_thumb(None, "?")
 
+    def _output_dir(self) -> str:
+        path = self._get_app_settings().output_dir.strip()
+        return path or str(DEFAULT_DOWNLOADS_DIR)
+
     def _collect_settings(self) -> AppSettings:
+        app = self._get_app_settings()
         return AppSettings(
-            output_dir=self._output_dir.get().strip() or str(DEFAULT_DOWNLOADS_DIR),
+            output_dir=app.output_dir,
             quality=self._get_quality_internal(),
             audio_only=self._audio_only_var.get(),
         )
@@ -1088,18 +1067,6 @@ class DownloadsView(ctk.CTkFrame):
         url = self._url_entry.get().strip()
         self._resolve_and_act(url, action="enqueue")
 
-    def _browse_folder(self) -> None:
-        if self._is_downloading:
-            return
-        initial = self._output_dir.get().strip() or str(DEFAULT_DOWNLOADS_DIR)
-        folder = filedialog.askdirectory(
-            title="Escolher pasta de destino",
-            initialdir=initial if os.path.isdir(initial) else str(DEFAULT_DOWNLOADS_DIR),
-        )
-        if folder:
-            self._output_dir.set(folder)
-            self._on_persist_settings()
-
     def _open_path_in_explorer(self, path: str) -> None:
         try:
             if sys.platform == "win32":
@@ -1113,7 +1080,7 @@ class DownloadsView(ctk.CTkFrame):
             self._append_log(f"Erro ao abrir pasta: {exc}")
 
     def _open_folder(self) -> None:
-        output_dir = self._output_dir.get().strip() or str(DEFAULT_DOWNLOADS_DIR)
+        output_dir = self._output_dir()
         if not os.path.isdir(output_dir):
             try:
                 os.makedirs(output_dir, exist_ok=True)
@@ -1270,7 +1237,6 @@ class DownloadsView(ctk.CTkFrame):
         if enabled:
             self._url_entry.configure(state="normal")
             self._clear_url_btn.configure(state="normal")
-        self._browse_btn.configure(state=state)
         self._clear_log_btn.configure(state=state)
         self._open_folder_btn.configure(state=state)
         if not enabled:
@@ -1353,10 +1319,7 @@ class DownloadsView(ctk.CTkFrame):
         if not cleaned:
             return
 
-        output_dir = self._output_dir.get().strip()
-        if not output_dir:
-            output_dir = str(DEFAULT_DOWNLOADS_DIR)
-            self._output_dir.set(output_dir)
+        output_dir = self._output_dir()
         if not os.path.isdir(output_dir):
             try:
                 os.makedirs(output_dir, exist_ok=True)

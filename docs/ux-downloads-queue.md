@@ -6,7 +6,7 @@ Especificação do comportamento da tela **Downloads**, da tela **Fila** na side
 
 | Tela | Conteúdo |
 |------|----------|
-| **Downloads** | URL, preview, opções, log, **+ Fila**, **Baixar**, **Cancelar** (rodapé fixo) |
+| **Downloads** | URL, preview (com somente áudio e qualidade abaixo do preview), log, **+ Fila**, **Baixar**, **Cancelar** (rodapé fixo) |
 | **Fila** (sidebar) | Card *Baixando agora*: miniatura, título, URL, status, barra, %, **Cancelar**, **Pular**; *Na fila*: cards (estilo Histórico) com miniatura, título, duração e **🗑** |
 
 A barra de progresso detalhada e a lista de pendentes **não** ficam mais no scroll de Downloads.

@@ -415,7 +415,6 @@ class YoutubeDownloaderApp(ctk.CTk):
             pop_next_queue_url=self._pop_next_queue_url,
             on_sync_queue_structure=self._sync_queue_structure,
             on_sync_now_playing=self._sync_now_playing_panel,
-            initial_output_dir=str(DEFAULT_DOWNLOADS_DIR),
         )
         self._view_frames["download"] = self._downloads_view
 
