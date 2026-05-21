@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Optional
 
-from PIL import Image
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QWidget
@@ -22,7 +21,9 @@ def run_on_main(widget: QWidget, callback: Callable[[], None]) -> None:
     QTimer.singleShot(0, widget, callback)
 
 
-def pixmap_from_pil(img: Image.Image, size: Optional[tuple[int, int]] = None) -> QPixmap:
+def pixmap_from_pil(img, size: Optional[tuple[int, int]] = None) -> QPixmap:
+    from PIL import Image
+
     if size:
         img = img.resize(size, Image.Resampling.LANCZOS)
     rgb = img.convert("RGB")

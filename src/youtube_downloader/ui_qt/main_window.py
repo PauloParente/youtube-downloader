@@ -18,13 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from youtube_downloader.config import (
-    APP_TITLE,
-    DEFAULT_DOWNLOADS_DIR,
-    WINDOW_MIN_HEIGHT,
-    WINDOW_MIN_WIDTH,
-    WINDOW_SIZE,
-)
+from youtube_downloader.config import APP_TITLE, DEFAULT_DOWNLOADS_DIR
 from youtube_downloader.ui_qt.frameless_window import (
     ResizeEdge,
     apply_mouse_resize,
@@ -68,15 +62,10 @@ from youtube_downloader.ui_qt.about_dialog import show_about_dialog
 from youtube_downloader.ui_qt.download_worker import start_download_thread
 from youtube_downloader.ui_qt.downloads_view import DownloadsView
 from youtube_downloader.ui_qt.event_bridge import EventBridge
-from youtube_downloader.ui_qt.history_view import HistoryView
-from youtube_downloader.ui_qt.library_view import LibraryView
 from youtube_downloader.ui_qt.custom_title_bar import CustomTitleBar
 from youtube_downloader.ui_qt.nav_registry import DEFAULT_VIEW_ID, stack_index
 from youtube_downloader.ui_qt.nav_shortcuts import NAV_VIEW_SHORTCUTS
 from youtube_downloader.ui_qt.nav_sidebar import NavSidebar
-from youtube_downloader.ui_qt.queue_view import QueueView
-from youtube_downloader.ui_qt.settings_view import SettingsView
-from youtube_downloader.ui_qt.splash_screen import SplashScreen, center_on_screen, parse_window_size
 from youtube_downloader.ui_qt.widgets.status_banner import create_status_banner_slot
 from youtube_downloader.ui_qt.theme import apply_theme
 from youtube_downloader.ui_qt.util import run_on_main, schedule
@@ -85,13 +74,22 @@ logger = get_logger("app")
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        settings: AppSettings | None = None,
+        theme_already_applied: bool = False,
+    ) -> None:
         super().__init__()
         self.setWindowFlags(
             Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
         )
-        self._settings = load_settings()
-        apply_theme(QApplication.instance(), self._settings.appearance_mode)
+        self._settings = settings if settings is not None else load_settings()
+        if not theme_already_applied:
+            apply_theme(QApplication.instance(), self._settings.appearance_mode)
+
+        self._lazy_placeholders: dict[str, QWidget] = {}
+        self._views_built: set[str] = {"download"}
 
         self._downloader = YoutubeDownloader()
         self._event_bridge = EventBridge()
@@ -125,7 +123,10 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._bind_shortcuts()
         self._apply_settings(self._settings)
-        self._check_ffmpeg()
+
+    def schedule_startup_tasks(self) -> None:
+        """Deferred work after the window is shown (ffmpeg banner, etc.)."""
+        schedule(self, 0, self._check_ffmpeg)
 
     def changeEvent(self, event) -> None:  # noqa: N802
         super().changeEvent(event)
@@ -269,48 +270,84 @@ class MainWindow(QMainWindow):
         )
         self._stack.addWidget(self._downloads_view)
 
-        self._queue_view = QueueView(
-            get_queue_snapshot=self._get_queue_snapshot,
-            get_cached_preview=self._preview_cache.get,
-            get_card_thumb=self._preview_cache.get_card_thumb,
-            is_preview_pending=self._preview_cache.is_pending,
-            on_remove_queue_at=self._remove_queue_at,
-            on_cancel_download=lambda: (
-                self._downloads_view.cancel_download() if self._downloads_view else None
-            ),
-            on_skip_download=lambda: (
-                self._downloads_view.skip_to_next_download()
-                if self._downloads_view
-                else None
-            ),
-        )
-        self._stack.addWidget(self._queue_view)
-
-        self._library_view = LibraryView(
-            get_output_dir=lambda: self._settings.output_dir,
-            on_open_path=self._open_path_in_explorer,
-        )
-        self._stack.addWidget(self._library_view)
-
-        self._history_view = HistoryView(
-            on_open_folder=self._open_history_folder,
-            on_open_file=self._open_history_file,
-            on_redownload=self._redownload_from_history,
-            on_remove=self._remove_history_entry,
-            on_clear_history=self._clear_history,
-        )
-        self._history_view.set_entries(self._history_entries)
-        self._stack.addWidget(self._history_view)
-
-        self._settings_view = SettingsView(
-            on_save=self._on_settings_saved,
-            on_appearance_changed=self._set_appearance_mode,
-        )
-        self._settings_view.load_settings(self._settings)
-        self._stack.addWidget(self._settings_view)
+        for view_id in ("queue", "library", "history", "settings"):
+            placeholder = QWidget()
+            self._lazy_placeholders[view_id] = placeholder
+            self._stack.addWidget(placeholder)
 
         self._switch_view(DEFAULT_VIEW_ID)
         self._update_nav_queue_badge()
+
+    def _ensure_view(self, view_id: str) -> None:
+        if view_id in self._views_built or self._stack is None:
+            return
+        index = stack_index(view_id)
+        if index is None:
+            return
+        placeholder = self._lazy_placeholders.get(view_id)
+        if placeholder is None:
+            return
+
+        if view_id == "queue":
+            from youtube_downloader.ui_qt.queue_view import QueueView
+
+            self._queue_view = QueueView(
+                get_queue_snapshot=self._get_queue_snapshot,
+                get_cached_preview=self._preview_cache.get,
+                get_card_thumb=self._preview_cache.get_card_thumb,
+                is_preview_pending=self._preview_cache.is_pending,
+                on_remove_queue_at=self._remove_queue_at,
+                on_cancel_download=lambda: (
+                    self._downloads_view.cancel_download()
+                    if self._downloads_view
+                    else None
+                ),
+                on_skip_download=lambda: (
+                    self._downloads_view.skip_to_next_download()
+                    if self._downloads_view
+                    else None
+                ),
+            )
+            widget = self._queue_view
+        elif view_id == "library":
+            from youtube_downloader.ui_qt.library_view import LibraryView
+
+            self._library_view = LibraryView(
+                get_output_dir=lambda: self._settings.output_dir,
+                on_open_path=self._open_path_in_explorer,
+            )
+            widget = self._library_view
+        elif view_id == "history":
+            from youtube_downloader.ui_qt.history_view import HistoryView
+
+            self._history_view = HistoryView(
+                on_open_folder=self._open_history_folder,
+                on_open_file=self._open_history_file,
+                on_redownload=self._redownload_from_history,
+                on_remove=self._remove_history_entry,
+                on_clear_history=self._clear_history,
+            )
+            self._history_view.set_entries(self._history_entries)
+            widget = self._history_view
+        elif view_id == "settings":
+            from youtube_downloader.ui_qt.settings_view import SettingsView
+
+            self._settings_view = SettingsView(
+                on_save=self._on_settings_saved,
+                on_appearance_changed=self._set_appearance_mode,
+            )
+            self._settings_view.load_settings(self._settings)
+            self._settings_view.sync_appearance_mode(self._settings.appearance_mode)
+            self._settings_view.refresh_section_icons()
+            widget = self._settings_view
+        else:
+            return
+
+        self._stack.removeWidget(placeholder)
+        placeholder.deleteLater()
+        del self._lazy_placeholders[view_id]
+        self._stack.insertWidget(index, widget)
+        self._views_built.add(view_id)
 
     def _bind_shortcuts(self) -> None:
         QShortcut(QKeySequence("Ctrl+V"), self, self._on_ctrl_v)
@@ -332,6 +369,7 @@ class MainWindow(QMainWindow):
     def _switch_view(self, view_id: str) -> None:
         if self._stack is None or self._sidebar is None:
             return
+        self._ensure_view(view_id)
         index = stack_index(view_id)
         if index is None:
             logger.debug("Ignoring unknown nav view_id: %s", view_id)
@@ -832,25 +870,7 @@ class MainWindow(QMainWindow):
 
 
 def run() -> None:
-    from youtube_downloader.core.logging_config import install_exception_hooks, setup_logging
+    """Backward-compatible entry; prefer youtube_downloader.ui_qt.startup.run."""
+    from youtube_downloader.ui_qt.startup import run as startup_run
 
-    setup_logging()
-    install_exception_hooks()
-    logger.info("Aplicativo iniciado (PySide6)")
-
-    app = QApplication.instance() or QApplication([])
-    startup_settings = load_settings()
-    apply_theme(app, startup_settings.appearance_mode)
-    splash = SplashScreen(appearance_mode=startup_settings.appearance_mode)
-    splash.show()
-    app.processEvents()
-
-    window = MainWindow()
-    w, h = parse_window_size(WINDOW_SIZE)
-    window.setMinimumSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
-    window.resize(w, h)
-    window.setWindowTitle(APP_TITLE)
-    center_on_screen(window)
-    splash.finish(window)
-    window.show()
-    app.exec()
+    startup_run()

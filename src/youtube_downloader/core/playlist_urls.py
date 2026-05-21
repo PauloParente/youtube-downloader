@@ -7,8 +7,6 @@ from enum import Enum
 from typing import Any, Literal, Optional
 from urllib.parse import parse_qs, urlparse
 
-import yt_dlp
-
 from youtube_downloader.core.logging_config import get_logger
 
 logger = get_logger("playlist_urls")
@@ -25,6 +23,15 @@ PLAYLIST_PAGE_RE = re.compile(
 )
 
 PlaylistMode = Literal["single", "full"]
+
+
+def __getattr__(name: str):
+    """Lazy module attribute for tests that patch ``playlist_urls.yt_dlp``."""
+    if name == "yt_dlp":
+        import yt_dlp
+
+        return yt_dlp
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class UrlKind(str, Enum):
@@ -145,6 +152,8 @@ def expand_playlist_urls(url: str) -> list[str]:
     }
 
     try:
+        import yt_dlp
+
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(extract_url, download=False)
     except Exception as exc:
