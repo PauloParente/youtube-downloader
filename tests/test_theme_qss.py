@@ -51,6 +51,10 @@ def test_dark_qss_new_selectors() -> None:
     assert "QLineEdit#filterInput" in qss
     assert "QFrame#compactRow" in qss
     assert "QFrame#downloadAlert" in qss
+    assert "QFrame#previewEmpty" in qss
+    assert "QFrame#previewEmptyIcon" in qss
+    assert DARK.alert_info_bg in qss
+    assert DARK.btn_secondary_border in qss
     assert "destinationChip" in qss
     assert "QFrame#customTitleBar" in qss
     assert "QFrame#customTitleBar QPushButton#titleBarButton" in qss

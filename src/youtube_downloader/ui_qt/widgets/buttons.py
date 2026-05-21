@@ -13,6 +13,13 @@ class PrimaryButton(QPushButton):
         self.setObjectName("primary")
 
 
+class SecondaryButton(QPushButton):
+    """Default secondary action — bordered, matches global QPushButton QSS."""
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+
+
 class GhostButton(QPushButton):
     def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
         super().__init__(text, parent)

@@ -16,7 +16,7 @@ from youtube_downloader.core.models import EventType, ProgressEvent
 from youtube_downloader.core.preview_cache import PreviewCache
 from youtube_downloader.ui_qt.event_bridge import EventBridge
 from youtube_downloader.ui_qt.util import schedule
-from youtube_downloader.ui_qt.widgets import EmptyState, MediaPreviewRow, PreviewSkeleton
+from youtube_downloader.ui_qt.widgets import MediaPreviewRow, PreviewEmptyPanel, PreviewSkeleton
 from youtube_downloader.ui_qt.widgets.download_options_bar import DownloadOptionsBar
 from youtube_downloader.ui_qt.widgets.download_alert import DownloadAlert
 
@@ -49,7 +49,7 @@ class DownloadsPreviewPanel:
 
         self._section: Optional[QWidget] = None
         self._alert: Optional[DownloadAlert] = None
-        self._empty_state: Optional[EmptyState] = None
+        self._empty_state: Optional[PreviewEmptyPanel] = None
         self._skeleton: Optional[PreviewSkeleton] = None
         self._media_row: Optional[MediaPreviewRow] = None
         self._fade_anim: Optional[QPropertyAnimation] = None
@@ -90,7 +90,7 @@ class DownloadsPreviewPanel:
         self._alert = DownloadAlert(self._section)
         section_layout.addWidget(self._alert)
 
-        self._empty_state = EmptyState(
+        self._empty_state = PreviewEmptyPanel(
             "link",
             "Nenhum vídeo selecionado",
             "Cole ou arraste um link do YouTube no campo acima.",
