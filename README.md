@@ -106,6 +106,7 @@ Ao abrir, uma **tela de splash** (logo, nome e mensagem de carregamento) é exib
 - Modo somente áudio (MP3)
 - Barra de progresso e status do download atual na tela **Fila**; log de marcos na tela Downloads
 - Preferências em `settings.json` (pasta, qualidade, áudio e opções avançadas — formato WebM/MP4, **perfil de exportação** (H.264 compatível com Windows ou melhor qualidade), bitrate MP3, limite de banda, legendas, tema claro/escuro, `cookies.txt` e notificação ao concluir aplicados no download)
+- **Identidade visual** unificada (tema escuro/claro, ícones SVG, componentes Qt) — ver [docs/design-system.md](docs/design-system.md)
 - **Fila de downloads**: **+ Fila** na tela Downloads; na sidebar **Fila**, cards com miniatura, título e duração (como o Histórico), progresso do vídeo atual, Cancelar, Pular e remover por item; processamento sequencial automático
 - Navegação por **sidebar**: Downloads, Fila, Biblioteca, Histórico, Configurações
 - Página **Biblioteca** — lista arquivos de mídia na pasta de destino

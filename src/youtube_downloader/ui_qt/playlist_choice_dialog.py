@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from youtube_downloader.core.playlist_urls import PlaylistMode
+from youtube_downloader.ui_qt.widgets import PrimaryButton
 
 PlaylistChoice = Optional[PlaylistMode]
 
@@ -41,8 +42,7 @@ def ask_video_in_playlist_choice(
         result["value"] = mode
         dialog.accept()
 
-    single_btn = QPushButton("Só este vídeo")
-    single_btn.setObjectName("primary")
+    single_btn = PrimaryButton("Só este vídeo")
     single_btn.clicked.connect(lambda: choose("single"))
     layout.addWidget(single_btn)
 

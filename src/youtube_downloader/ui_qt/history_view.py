@@ -7,7 +7,6 @@ import webbrowser
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -26,7 +25,18 @@ from youtube_downloader.core.download_history import (
 )
 from youtube_downloader.core.logging_config import get_logger
 from youtube_downloader.core.metadata import is_youtube_url
+from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
 from youtube_downloader.ui_qt.util import pixmap_from_pil
+from youtube_downloader.ui_qt.widgets import (
+    CompactMediaRow,
+    EmptyState,
+    IconButton,
+    LinkButton,
+    PageHeader,
+    apply_page_margins,
+    muted_label,
+    set_text_class,
+)
 
 HISTORY_THUMB_SIZE = (128, 72)
 logger = get_logger(__name__)
@@ -54,24 +64,24 @@ class HistoryView(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
+        apply_page_margins(layout)
         header = QHBoxLayout()
-        titles = QVBoxLayout()
-        titles.addWidget(QLabel("<b style='font-size:22px'>Histórico</b>"))
-        titles.addWidget(QLabel("Downloads concluídos neste aplicativo."))
-        header.addLayout(titles)
-        header.addStretch()
+        header.addWidget(
+            PageHeader("Histórico", "Downloads concluídos neste aplicativo."),
+            stretch=1,
+        )
         clear_btn = QPushButton("Limpar histórico")
         clear_btn.clicked.connect(self._clear_all)
-        header.addWidget(clear_btn)
+        header.addWidget(clear_btn, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
 
         self._filter = QLineEdit()
+        self._filter.setObjectName("filterInput")
         self._filter.setPlaceholderText("Filtrar por título ou canal...")
         self._filter.textChanged.connect(self._on_filter_changed)
         layout.addWidget(self._filter)
 
-        self._status = QLabel()
+        self._status = muted_label("")
         layout.addWidget(self._status)
 
         scroll = QScrollArea()
@@ -84,56 +94,44 @@ class HistoryView(QWidget):
 
     def set_entries(self, entries: list[DownloadHistoryEntry]) -> None:
         self._entries = list(entries)
-        self._on_filter_changed()
+        self._render_list()
 
     def _on_filter_changed(self) -> None:
-        self._update_status()
-        try:
-            self._render_rows()
-        except Exception:
-            logger.exception("Falha ao renderizar lista do historico")
+        self._render_list()
 
-    def _filtered(self) -> list[DownloadHistoryEntry]:
+    def _filtered_entries(self) -> list[DownloadHistoryEntry]:
         q = self._filter.text().strip().casefold()
         if not q:
             return self._entries
         return [
             e
             for e in self._entries
-            if q in e.title.casefold() or q in e.channel_name.casefold()
+            if q in e.title.casefold()
+            or q in (e.channel_name or "").casefold()
         ]
 
-    def _update_status(self) -> None:
-        total = len(self._entries)
-        visible = self._filtered()
-        q = self._filter.text().strip()
-        if not total:
-            self._status.setText("Nenhum download no histórico.")
-            return
-        text = f"{len(visible)} de {total} itens" if q else f"{total} itens no histórico"
-        missing = sum(
-            1
-            for e in (visible if q else self._entries)
-            if not os.path.isfile(e.filepath)
-        )
-        if missing:
-            suffix = "arquivo" if missing == 1 else "arquivos"
-            text += f" · {missing} {suffix} não encontrado(s) no disco"
-        self._status.setText(text)
-
-    def _render_rows(self) -> None:
+    def _render_list(self) -> None:
         while self._list_layout.count():
             item = self._list_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        visible = self._filtered()
+        visible = self._filtered_entries()
+        self._status.setText(
+            f"{len(visible)} de {len(self._entries)} item(ns)"
+            if self._filter.text().strip() and self._entries
+            else f"{len(self._entries)} item(ns) no histórico"
+            if self._entries
+            else "Nenhum download no histórico ainda."
+        )
         if not visible:
-            msg = (
-                "Nenhum download no histórico. Conclua um download na tela Downloads."
-                if not self._entries
-                else "Nenhum resultado para este filtro."
+            empty = EmptyState(
+                "history",
+                "Nenhum resultado." if self._entries else "Histórico vazio",
+                "Ajuste o filtro."
+                if self._entries
+                else "Baixe um vídeo na tela Downloads para ver o histórico aqui.",
             )
-            self._list_layout.addWidget(QLabel(msg))
+            self._list_layout.addWidget(empty)
             return
         for entry in visible:
             self._list_layout.addWidget(self._make_card(entry))
@@ -141,70 +139,58 @@ class HistoryView(QWidget):
     def _make_card(self, entry: DownloadHistoryEntry) -> QWidget:
         path = entry.filepath
         exists = os.path.isfile(path)
-        card = QWidget()
-        card.setObjectName("card")
-        h = QHBoxLayout(card)
-
-        thumb = QLabel()
-        thumb.setFixedSize(*HISTORY_THUMB_SIZE)
+        row = CompactMediaRow(thumb_size=HISTORY_THUMB_SIZE)
+        row.set_title(entry.title)
+        size_label = format_file_size(entry.size_bytes) if exists else "—"
+        channel = entry.channel_name.strip() or "—"
+        row.set_meta(
+            f"{channel} · {format_relative_date(entry.completed_at)} · "
+            f"{entry.format_ext} · {size_label}"
+        )
         if entry.thumbnail_path and os.path.isfile(entry.thumbnail_path):
             try:
                 from PIL import Image
 
                 img = Image.open(entry.thumbnail_path).convert("RGB")
-                thumb.setPixmap(pixmap_from_pil(img, HISTORY_THUMB_SIZE))
+                row.set_pixmap(pixmap_from_pil(img, HISTORY_THUMB_SIZE))
             except OSError:
-                thumb.setText("▶" if not entry.is_audio else "♪")
+                row.set_placeholder("")
         else:
-            thumb.setText("▶" if not entry.is_audio else "♪")
-            thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        h.addWidget(thumb)
+            row.set_placeholder("")
 
-        body = QVBoxLayout()
-        body.addWidget(QLabel(f"<b>{entry.title}</b>"))
-        if entry.channel_name.strip():
-            ch = QPushButton(entry.channel_name.strip())
-            ch.setFlat(True)
-            ch.setStyleSheet("color: #007BFF; text-align: left;")
-            if entry.channel_url.strip():
-                ch.clicked.connect(
-                    lambda: webbrowser.open(entry.channel_url.strip())
-                )
-            body.addWidget(ch)
-        size_label = format_file_size(entry.size_bytes) if exists else "—"
-        body.addWidget(
-            QLabel(
-                f"{format_relative_date(entry.completed_at)} · "
-                f"{entry.format_ext} · {size_label}"
-            )
+        yt_btn = IconButton(tooltip="Abrir no YouTube")
+        icon_on_button(yt_btn, "play", size=18)
+        yt_btn.setEnabled(
+            bool(entry.source_url.strip() and is_youtube_url(entry.source_url))
         )
-        if not exists:
-            body.addWidget(QLabel("Arquivo não encontrado"))
-        h.addLayout(body, stretch=1)
-
-        actions = QHBoxLayout()
-        yt_btn = QPushButton("▶")
-        yt_btn.setEnabled(bool(entry.source_url.strip() and is_youtube_url(entry.source_url)))
         yt_btn.clicked.connect(lambda: webbrowser.open(entry.source_url.strip()))
-        actions.addWidget(yt_btn)
-        open_btn = QPushButton("Abrir")
+        row.actions_layout.addWidget(yt_btn)
+
+        open_btn = IconButton(tooltip="Abrir arquivo")
+        icon_on_button(open_btn, "file", size=18)
         open_btn.setEnabled(exists)
         open_btn.clicked.connect(lambda: self._on_open_file(path))
-        actions.addWidget(open_btn)
-        folder_btn = QPushButton("Pasta")
+        row.actions_layout.addWidget(open_btn)
+
+        folder_btn = IconButton(tooltip="Abrir pasta")
+        icon_on_button(folder_btn, "folder", size=18)
         folder_btn.clicked.connect(lambda: self._on_open_folder(path))
-        actions.addWidget(folder_btn)
-        redo_btn = QPushButton("Baixar de novo")
+        row.actions_layout.addWidget(folder_btn)
+
+        redo_btn = IconButton(tooltip="Baixar de novo")
+        icon_on_button(redo_btn, "download", size=18)
         redo_btn.setEnabled(bool(entry.source_url.strip()))
         redo_btn.clicked.connect(
             lambda: self._on_redownload(entry.source_url, entry.title)
         )
-        actions.addWidget(redo_btn)
-        rem_btn = QPushButton("Remover")
+        row.actions_layout.addWidget(redo_btn)
+
+        rem_btn = IconButton(tooltip="Remover do histórico")
+        icon_on_button(rem_btn, "trash", size=18)
         rem_btn.clicked.connect(lambda: self._remove_entry(path))
-        actions.addWidget(rem_btn)
-        h.addLayout(actions)
-        return card
+        row.actions_layout.addWidget(rem_btn)
+
+        return row
 
     def _remove_entry(self, filepath: str) -> None:
         reply = QMessageBox.question(

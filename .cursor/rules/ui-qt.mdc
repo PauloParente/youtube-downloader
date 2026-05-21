@@ -5,13 +5,18 @@ globs: src/youtube_downloader/ui_qt/**/*
 
 # UI — PySide6
 
+## Design system
+
+Ver [docs/design-system.md](../../docs/design-system.md). Tokens em `ui_qt/theme_tokens.py`; QSS em `ui_qt/theme.py` (`build_dark_qss` / `build_light_qss`, `apply_theme`). Componentes em `ui_qt/widgets/`; ícones SVG em `resources/icons/` via `ui_qt/icons.py`.
+
 ## Tema
 
-Importar cores e `apply_theme` de `ui_qt/theme.py`. Preferir QSS (`#primary`, `#card`) a hex espalhado.
+Importar cores de `theme.py` ou `theme_tokens.py`. Preferir QSS (`#primary`, `#card`, `QLabel[class="muted"]`) e widgets do kit — **não** hex/`setStyleSheet` locais nas views.
 
 ## Views
 
 - Herdar `QWidget` (ou `QMainWindow` só em `main_window.py`).
+- `PageHeader` + `apply_page_margins` em páginas novas.
 - Callbacks no `__init__` — shell em `ui_qt/main_window.py` mantém estado.
 - Textos visíveis em **português**.
 

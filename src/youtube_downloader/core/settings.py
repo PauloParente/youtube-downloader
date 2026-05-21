@@ -33,6 +33,7 @@ class AppSettings:
     auto_download_subtitles: bool = False
     appearance_mode: str = "dark"
     cookies_file: str = ""
+    activity_log_expanded: bool = True
 
     @classmethod
     def defaults(cls) -> "AppSettings":
@@ -49,6 +50,7 @@ class AppSettings:
             auto_download_subtitles=False,
             appearance_mode="dark",
             cookies_file="",
+            activity_log_expanded=True,
         )
 
 
@@ -140,6 +142,9 @@ def _coerce_settings(data: dict[str, Any]) -> AppSettings:
         ),
         appearance_mode=appearance,
         cookies_file=cookies_file,
+        activity_log_expanded=bool(
+            data.get("activity_log_expanded", defaults.activity_log_expanded)
+        ),
     )
 
 

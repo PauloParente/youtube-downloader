@@ -7,7 +7,8 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication, QLabel, QSplashScreen, QVBoxLayout, QWidget
 
 from youtube_downloader.config import APP_TITLE, APP_VERSION, SPLASH_LOGO_PATH, SPLASH_SIZE
-from youtube_downloader.ui_qt.theme import APP_BG, TEXT_SECONDARY
+from youtube_downloader.ui_qt.theme_tokens import DARK
+from youtube_downloader.ui_qt.widgets import secondary_label
 
 
 def parse_window_size(size: str) -> tuple[int, int]:
@@ -34,7 +35,7 @@ class SplashScreen:
 
     def show(self) -> None:
         pixmap = QPixmap(self._width, self._height)
-        pixmap.fill(APP_BG)
+        pixmap.fill(DARK.app_bg)
         self._splash = QSplashScreen(pixmap)
         self._splash.setWindowFlags(
             Qt.WindowType.SplashScreen | Qt.WindowType.FramelessWindowHint
@@ -48,18 +49,17 @@ class SplashScreen:
                 logo = QPixmap(str(SPLASH_LOGO_PATH)).scaled(
                     48, 48, Qt.AspectRatioMode.KeepAspectRatio
                 )
-                layout.addWidget(QLabel(alignment=Qt.AlignmentFlag.AlignCenter))
-                layout.itemAt(layout.count() - 1).widget().setPixmap(logo)
+                logo_lbl = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
+                logo_lbl.setPixmap(logo)
+                layout.addWidget(logo_lbl)
             except Exception:
                 pass
-        layout.addWidget(
-            QLabel(f"<b style='font-size:16px'>{APP_TITLE}</b> v{APP_VERSION}")
-        )
-        status = QLabel("A carregar. Por favor, aguarde…")
-        status.setStyleSheet(f"color: {TEXT_SECONDARY};")
-        layout.addWidget(status)
+        title = QLabel(f"<b>{APP_TITLE}</b> v{APP_VERSION}")
+        title.setObjectName("pageTitle")
+        layout.addWidget(title)
+        layout.addWidget(secondary_label("A carregar. Por favor, aguarde…"))
         content.setFixedSize(self._width, self._height)
-        content.setStyleSheet(f"background-color: {APP_BG};")
+        content.setStyleSheet(f"background-color: {DARK.app_bg};")
 
         self._splash.show()
         center_on_screen(self._splash)

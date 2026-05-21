@@ -7,7 +7,6 @@ from collections.abc import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QPushButton,
     QScrollArea,
@@ -16,6 +15,15 @@ from PySide6.QtWidgets import (
 )
 
 from youtube_downloader.core.library_scan import LibraryFile, scan_library_folder
+from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
+from youtube_downloader.ui_qt.widgets import (
+    CompactMediaRow,
+    EmptyState,
+    GhostButton,
+    PageHeader,
+    apply_page_margins,
+    muted_label,
+)
 
 
 class LibraryView(QWidget):
@@ -35,25 +43,28 @@ class LibraryView(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
+        apply_page_margins(layout)
         header = QHBoxLayout()
-        titles = QVBoxLayout()
-        titles.addWidget(QLabel("<b style='font-size:22px'>Biblioteca</b>"))
-        titles.addWidget(QLabel("Arquivos de mídia na pasta de destino configurada."))
-        header.addLayout(titles)
-        header.addStretch()
-        refresh_btn = QPushButton("Atualizar")
+        header.addWidget(
+            PageHeader(
+                "Biblioteca",
+                "Arquivos de mídia na pasta de destino configurada.",
+            ),
+            stretch=1,
+        )
+        refresh_btn = GhostButton("Atualizar")
+        icon_on_button(refresh_btn, "library", size=18)
         refresh_btn.clicked.connect(self.refresh)
-        header.addWidget(refresh_btn)
+        header.addWidget(refresh_btn, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
 
         self._filter = QLineEdit()
+        self._filter.setObjectName("filterInput")
         self._filter.setPlaceholderText("Filtrar arquivos...")
         self._filter.textChanged.connect(self._render_rows)
         layout.addWidget(self._filter)
 
-        self._status = QLabel()
-        self._status.setProperty("class", "muted")
+        self._status = muted_label("")
         layout.addWidget(self._status)
 
         scroll = QScrollArea()
@@ -87,6 +98,11 @@ class LibraryView(QWidget):
         else:
             self._status.setText(f"Nenhum arquivo de mídia em {folder}")
 
+    def _open_download_folder(self) -> None:
+        folder = self._get_output_dir().strip()
+        if folder:
+            self._on_open_path(folder)
+
     def _render_rows(self) -> None:
         folder = self._get_output_dir().strip()
         self._update_status(folder)
@@ -96,24 +112,34 @@ class LibraryView(QWidget):
                 item.widget().deleteLater()
         visible = self._filtered()
         if not visible:
-            msg = (
-                "Nenhum arquivo encontrado. Baixe vídeos na tela Downloads."
-                if not self._files
-                else "Nenhum resultado para este filtro."
-            )
-            self._list_layout.addWidget(QLabel(msg))
+            if not self._files:
+                empty = EmptyState(
+                    "library",
+                    "Pasta vazia",
+                    "Nenhum arquivo de mídia na pasta de download.",
+                    cta_label="Abrir pasta de download",
+                    on_cta=self._open_download_folder,
+                )
+            else:
+                empty = EmptyState(
+                    "library",
+                    "Nenhum resultado",
+                    "Nenhum arquivo corresponde ao filtro.",
+                )
+            self._list_layout.addWidget(empty)
             return
         for item in visible:
-            row = QWidget()
-            row.setObjectName("card")
-            h = QHBoxLayout(row)
-            icon = "♪" if item.is_audio else "▶"
-            h.addWidget(QLabel(icon))
-            col = QVBoxLayout()
-            col.addWidget(QLabel(f"<b>{item.name}</b>"))
-            col.addWidget(QLabel(f"{item.format_ext} · {item.size_label}"))
-            h.addLayout(col, stretch=1)
-            open_btn = QPushButton("Abrir")
-            open_btn.clicked.connect(lambda checked, p=item.filepath: self._on_open_path(p))
-            h.addWidget(open_btn)
+            row = CompactMediaRow()
+            row.set_title(item.name)
+            row.set_meta(f"{item.format_ext} · {item.size_label}")
+            icon_name = "audio" if item.is_audio else "video"
+            row.set_pixmap(themed_icon(icon_name, 32).pixmap(32, 32))
+            open_btn = QPushButton()
+            open_btn.setObjectName("iconOnly")
+            icon_on_button(open_btn, "folder", size=18)
+            open_btn.setToolTip("Abrir arquivo")
+            open_btn.clicked.connect(
+                lambda checked, p=item.filepath: self._on_open_path(p)
+            )
+            row.actions_layout.addWidget(open_btn)
             self._list_layout.addWidget(row)

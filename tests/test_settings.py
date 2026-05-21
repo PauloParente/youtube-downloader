@@ -12,6 +12,11 @@ def test_coerce_settings_defaults_on_invalid_quality() -> None:
     assert settings.quality == AppSettings.defaults().quality
 
 
+def test_coerce_activity_log_expanded() -> None:
+    assert _coerce_settings({"activity_log_expanded": False}).activity_log_expanded is False
+    assert _coerce_settings({}).activity_log_expanded is True
+
+
 def _foreign_unwritable_path() -> str:
     if sys.platform == "win32":
         return r"Z:\no-such-volume\YouTubeDownloader\downloads"
