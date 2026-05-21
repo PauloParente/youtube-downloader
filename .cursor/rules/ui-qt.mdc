@@ -1,0 +1,27 @@
+---
+description: PySide6 UI do YouTube Downloader
+globs: src/youtube_downloader/ui_qt/**/*
+---
+
+# UI — PySide6
+
+## Tema
+
+Importar cores e `apply_theme` de `ui_qt/theme.py`. Preferir QSS (`#primary`, `#card`) a hex espalhado.
+
+## Views
+
+- Herdar `QWidget` (ou `QMainWindow` só em `main_window.py`).
+- Callbacks no `__init__` — shell em `ui_qt/main_window.py` mantém estado.
+- Textos visíveis em **português**.
+
+## Threading (crítico)
+
+- Download: `DownloadWorker` + `QThread` em `ui_qt/download_worker.py`.
+- Progresso: `EventBridge.emit_progress` → slot na main thread.
+- Preview debounced: thread de rede → `EventBridge` com `PREVIEW_READY`.
+- **Nunca** `setText` / `setPixmap` em widgets a partir do worker.
+
+## Navegação
+
+Nova item na sidebar: `NavSidebar.ITEMS` + índice em `MainWindow._switch_view` + widget no `QStackedWidget`.
