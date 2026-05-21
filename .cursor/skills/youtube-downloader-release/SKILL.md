@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 # YouTube Downloader — release (.exe)
 
-Checklist operacional. Detalhes no [README.md](../../../README.md) (*Checklist de release*), [build.ps1](../../../build.ps1), Git: [docs/git-workflow.md](../../../docs/git-workflow.md).
+Checklist operacional. Detalhes em [docs/release.md](../../../docs/release.md), [build.ps1](../../../build.ps1), Git: [docs/git-workflow.md](../../../docs/git-workflow.md).
 
 ## Pré-requisito Git
 

@@ -23,7 +23,7 @@ Estado do produto em relação ao código na branch `main`. Para arquitetura e c
 ### Fase 3 — Manutenção
 - Testes pytest em `tests/` (35+ testes, foco em `core/`)
 - Script `update-deps.ps1`
-- Checklist de release no README
+- Checklist de release em [docs/release.md](docs/release.md)
 - Repositório no GitHub: CI (Windows + Ubuntu), CONTRIBUTING, `settings.example.json`
 
 ### Fase 4 — Arquitetura e opções de download
@@ -59,7 +59,7 @@ Itens **não** implementados ou só parcialmente.
 | **Idioma da interface (i18n)** | `language` só afeta legendas no yt-dlp | i18n completo ou manter só “idioma das legendas” |
 | **Runtime JS (Deno)** | Documentado no README | Aviso na UI quando yt-dlp precisar de challenge solver |
 | **Duplicação Downloads ↔ Config** | Pasta/qualidade/áudio em duas telas | Unificar UX (defaults só em Configurações, por exemplo) |
-| **Onboarding Linux no README** | Seção Linux + Tk/FFmpeg documentados | Manter alinhado ao testar novas distros |
+| **Onboarding Linux no README** | Clone/venv Linux + FFmpeg documentados | Manter alinhado ao testar novas distros |
 
 ### Engenharia (baixa urgência)
 - Mais testes: merge settings + job, `force_release_download_ui` (mocks)
