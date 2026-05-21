@@ -7,6 +7,7 @@ import sys
 import time
 from typing import TYPE_CHECKING
 
+from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 
 from youtube_downloader.config import (
@@ -34,6 +35,31 @@ if TYPE_CHECKING:
 logger = get_logger("startup")
 
 _PROFILE_MARKS: list[tuple[str, float]] = []
+
+# Dev-only: extra time on splash (0 = off). Override: YTD_SPLASH_HOLD_SEC=30
+_SPLASH_PREVIEW_HOLD_SEC = 0.0
+
+
+def _splash_hold_seconds() -> float:
+    """Seconds to keep splash visible (0 = normal startup). Env overrides the constant."""
+    raw = os.environ.get("YTD_SPLASH_HOLD_SEC", "").strip()
+    if raw:
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            logger.warning("YTD_SPLASH_HOLD_SEC invalid: %r", raw)
+            return 0.0
+    return max(0.0, _SPLASH_PREVIEW_HOLD_SEC)
+
+
+def _hold_splash_visible(app: QApplication, seconds: float) -> None:
+    if seconds <= 0:
+        return
+    logger.info("splash preview hold %.1fs", seconds)
+    loop = QEventLoop()
+    QTimer.singleShot(int(seconds * 1000), loop.quit)
+    loop.exec()
+    app.processEvents()
 
 
 def _profile_enabled() -> bool:
@@ -72,6 +98,8 @@ def run() -> None:
     splash.show()
     app.processEvents()
     _profile_mark("splash_visible")
+
+    _hold_splash_visible(app, _splash_hold_seconds())
 
     from youtube_downloader.ui_qt.main_window import MainWindow
 
