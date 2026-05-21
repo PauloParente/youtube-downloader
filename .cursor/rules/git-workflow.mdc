@@ -1,0 +1,64 @@
+---
+description: Protocolo Git (GitHub Flow, Conventional Commits, PR, agentes)
+alwaysApply: true
+---
+
+# Git — protocolo do projeto
+
+Documentação completa: [docs/git-workflow.md](../../docs/git-workflow.md). Playbook: skill `youtube-downloader-git`.
+
+## Modelo
+
+- **GitHub Flow:** só `main` + branches curtas; merge **via PR** (squash recomendado).
+- **Sem push direto em `main`.** Sem force-push em `main`.
+
+## Branches
+
+Prefixos: `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, `ci/` + kebab-case em inglês.
+
+**Uma branch = um assunto = um PR.** Não acumular tópicos diferentes na mesma branch.
+
+Antes de criar branch:
+
+```powershell
+git fetch origin; git checkout main; git pull origin main
+```
+
+**Nova tarefa ou PR já mergeado** → sempre branch nova a partir de `main` atualizada; não reutilizar branch antiga para outro assunto.
+
+## Commits — Conventional Commits (obrigatório)
+
+```text
+<type>(<scope>): <descrição imperativa>
+```
+
+Tipos: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`. Escopos comuns: `ui`, `core`, `ci`, `deps`.
+
+Exemplos: `feat(ui): …`, `fix(core): …`, `ci: instalar libEGL no Ubuntu`.
+
+## Agentes — obrigatório
+
+| Ação | Regra |
+|------|--------|
+| `git commit` | **Somente** se o usuário pedir. Antes: `git status`, `git diff`, `git log -5`. Mensagem convencional. |
+| `git push` / PR | **Somente** se o usuário pedir. |
+| `git config` | Nunca alterar. |
+| Hooks | Nunca `--no-verify`. |
+| Amend / force-push | Só se o usuário pedir; nunca force-push em `main`. |
+
+### Antes de commit ou push (checklist)
+
+1. `git branch --show-current` — o nome da branch corresponde **só** ao assunto deste commit?
+2. `git status` + `git diff` — commitar **apenas** ficheiros deste assunto (nunca `settings.json`, `logs/`, etc.).
+3. Se o assunto ≠ branch atual, ou a branch já foi mergeada → **não** commitar; seguir skill `youtube-downloader-git` (secção *Trabalho na branch errada*).
+4. Dizer ao usuário: **branch**, **ficheiros** que entram no commit e se falta abrir PR.
+
+## Antes de PR
+
+1. `python -m pytest`
+2. Revisar `git diff origin/main...HEAD`
+3. Sem arquivos locais no diff (`settings.json`, `history.json`, `logs/`, `.venv/`, `dist/`, cookies)
+
+## Não commitar
+
+`settings.json`, `history.json`, `downloads/`, `logs/`, `.venv/`, `vendor/`, `dist/`, credenciais.
