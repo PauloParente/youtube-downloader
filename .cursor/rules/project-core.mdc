@@ -16,9 +16,11 @@ Python 3.10+, PySide6, yt-dlp, Pillow, FFmpeg. Entrada: `main.py` ou `python -m 
 - Lógica de download, JSON, yt-dlp, FFmpeg → `core/`
 - Telas e widgets → `ui_qt/`
 - Constantes globais → `config.py`
-- Orquestração da janela → `app.py` (evitar crescer; preferir novas views em `ui/`)
+- Orquestração da janela → `main_window.py` (evitar crescer; preferir novas views em `ui_qt/`)
 
 ## Git e dados locais
+
+Operações Git: seguir [`.cursor/rules/git-workflow.mdc`](git-workflow.mdc) e [docs/git-workflow.md](../../docs/git-workflow.md).
 
 Não commitar: `settings.json`, `history.json`, `downloads/`, `logs/`, `.venv/`, `vendor/`, `dist/`.
 

@@ -140,12 +140,27 @@ Nunca atualizar widgets Qt a partir do worker — só via signals/slots ou `QTim
 
 Detalhes: regras em [`.cursor/rules/`](.cursor/rules/) e [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Fluxo Git
+
+Protocolo completo: **[docs/git-workflow.md](docs/git-workflow.md)**. Regra Cursor: `git-workflow.mdc` (sempre ativa).
+
+| Regra | Detalhe |
+|-------|---------|
+| Modelo | **GitHub Flow** — `main` + branches curtas; merge via **PR** (squash recomendado) |
+| Branches | `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/`, `ci/` + kebab-case (inglês) |
+| Um assunto por branch | **Uma branch = um PR**; após merge, trabalho novo → branch nova a partir de `main` |
+| Commits | **Conventional Commits** obrigatórios — `feat(ui): …`, `fix(core): …`, etc. |
+| Agentes | Commit, push e PR **somente** se o usuário pedir; antes: validar branch + ficheiros (`youtube-downloader-git`); `pytest` antes de PR |
+| Proibido | Push/force-push em `main`; commitar `settings.json`, `logs/`, `.venv/`, `dist/`, credenciais; misturar assuntos na mesma branch |
+
+Fluxo sugerido: implementar → `pytest` → `youtube-downloader-code-review` (diff grande) → PR (`youtube-downloader-git`).
+
 ## Depuração de bugs (agentes)
 
 Ao investigar ou corrigir um bug reportado pelo usuário:
 
 1. Ler **`logs/errors.log`** (últimas linhas) e, se necessário, **`logs/app.log`** na raiz do projeto (dev) ou ao lado do `.exe` (dist).
-2. Erros em botões/comandos Tk costumam aparecer como `Exceção em callback da interface` (`youtube_downloader.ui.callback`) — hook em `install_ui_exception_logging` após criar a janela.
+2. Erros em slots Qt / callbacks da UI: ver logs da view (`downloads_view`, `main_window`) e exceções na main thread.
 3. Exceções na thread principal ou em workers de download: `youtube_downloader.unhandled` (hooks em `install_exception_hooks`).
 4. Reproduzir o fluxo na UI se o log não for conclusivo; não assumir causa só pelo sintoma visual.
 
@@ -155,15 +170,16 @@ Procedimentos em [`.cursor/skills/`](.cursor/skills/) — invoque pelo nome ou q
 
 | Skill | Quando usar |
 |-------|-------------|
+| `youtube-downloader-git` | Branch, commit, push, PR, tag — [docs/git-workflow.md](docs/git-workflow.md) |
 | `youtube-downloader-feature` | Opção → `AppSettings` → `DownloadJob` → `build_ytdl_opts` |
-| `youtube-downloader-ui-view` | Telas em `ui/`, wiring em `app.py`, threading — ver [docs/ux-downloads-queue.md](docs/ux-downloads-queue.md) |
+| `youtube-downloader-ui-view` | Telas em `ui_qt/`, wiring em `main_window.py`, threading Qt — [docs/ux-downloads-queue.md](docs/ux-downloads-queue.md) |
 | `youtube-downloader-logging` | Ao implementar feature — checklist de onde logar |
 | `youtube-downloader-bugfix` | Investigar/corrigir bug — começar por `logs/errors.log` |
-| `youtube-downloader-release` | Versão, `build.ps1`, zip, FFmpeg em `dist/` |
+| `youtube-downloader-release` | Versão, `build.ps1`, zip, tag `vX.Y.Z` em `main` |
 | `youtube-downloader-code-review` | Revisar diff antes do merge (read-only primeiro) |
-| `youtube-downloader-refactor-extract` | Extrair de `app.py` sem big-bang |
+| `youtube-downloader-refactor-extract` | Extrair de `app.py` / views sem big-bang |
 
-Fluxo sugerido: implementar → `youtube-downloader-logging` (checklist) → `pytest` → `youtube-downloader-code-review` → corrigir → PR. Para bugs: `youtube-downloader-bugfix` → `pytest` → PR.
+Fluxo sugerido: implementar → `pytest` → `youtube-downloader-code-review` (se necessário) → PR (`youtube-downloader-git`). Para bugs: `youtube-downloader-bugfix` → `pytest` → PR.
 
 ## Backlog de refatoração
 
@@ -191,7 +207,7 @@ Fluxo sugerido: implementar → `youtube-downloader-logging` (checklist) → `py
 1. PR/commit de estrutura separado de mudança de comportamento.
 2. Extrair código, rodar `pytest`, depois evoluir.
 3. Ao extrair função pura de `core/` ou views, adicionar teste em `tests/` (ex.: `test_download_opts.py` para `build_ytdl_opts`).
-4. Novas telas: arquivo em `ui/` + entrada em `NavSidebar.ITEMS` + `_view_frames` em `app.py`.
+4. Novas telas: arquivo em `ui_qt/` + registro em `nav_registry` / `main_window.py`.
 5. Design system: [`docs/design-system.md`](docs/design-system.md), `ui_qt/theme_tokens.py`, `ui_qt/theme.py`, `ui_qt/widgets/`; evitar cores hardcoded fora do tema.
 
 Ver regra [`.cursor/rules/refactoring.mdc`](.cursor/rules/refactoring.mdc).
@@ -204,6 +220,7 @@ Ver regra [`.cursor/rules/refactoring.mdc`](.cursor/rules/refactoring.mdc).
 
 - [README.md](README.md) — instalação, uso, release
 - [ROADMAP.md](ROADMAP.md) — backlog de produto
-- [CONTRIBUTING.md](CONTRIBUTING.md) — PR e Git
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contribuição e resumo Git
+- [docs/git-workflow.md](docs/git-workflow.md) — GitHub Flow, Conventional Commits, PR, tags
 - [docs/ux-downloads-queue.md](docs/ux-downloads-queue.md) — fluxo URL, fila, Baixar, cancelar
 - [`.cursor/skills/`](.cursor/skills/) — playbooks Cursor
