@@ -11,7 +11,9 @@ from youtube_downloader.core.path_utils import open_path_in_explorer
 def test_open_path_windows(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "platform", "win32")
     startfile = MagicMock()
-    monkeypatch.setattr("youtube_downloader.core.path_utils.os.startfile", startfile)
+    fake_os = MagicMock()
+    fake_os.startfile = startfile
+    monkeypatch.setattr("youtube_downloader.core.path_utils.os", fake_os)
     open_path_in_explorer(r"C:\downloads\video.mp4")
     startfile.assert_called_once_with(r"C:\downloads\video.mp4")
 
