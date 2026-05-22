@@ -6,11 +6,17 @@ import math
 import random
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QElapsedTimer, Qt, QTimer
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
 from youtube_downloader.config import APP_TITLE, APP_VERSION, SPLASH_LOGO_PATH, SPLASH_SIZE
+from youtube_downloader.ui_qt.animation_timing import (
+    angle_step_toward,
+    clamp_dt_seconds,
+    exponential_step,
+    repaint_interval_ms,
+)
 from youtube_downloader.ui_qt.theme_tokens import (
     ACCENT_MUTED,
     DARK,
@@ -24,15 +30,16 @@ from youtube_downloader.ui_qt.widgets import secondary_label
 if TYPE_CHECKING:
     pass
 
-# Animated gradient
-_SPLASH_ANIM_MS = 33
-_SPLASH_PHASE_STEP_BASE = 0.0015
+# Animated gradient — rates in wall-clock seconds (not per-frame at 60 Hz).
+# Phase speed matches the previous ~33 ms tick with step 0.0015 at factor 1.0.
+_SPLASH_LEGACY_TICK_SEC = 0.033
+_SPLASH_PHASE_SPEED_BASE = 0.0015 / _SPLASH_LEGACY_TICK_SEC
 _SPLASH_SPEED_MIN = 0.4
 _SPLASH_SPEED_MAX = 1.0
 _SPLASH_SPEED_CHANGE_SEC = 3.0
-_SPLASH_SPEED_LERP = 0.035
+_SPLASH_SPEED_RESPONSE_SEC = 0.984
 _SPLASH_DIRECTION_CHANGE_SEC = 9.0
-_SPLASH_ANGLE_LERP = 0.007
+_SPLASH_ANGLE_RESPONSE_SEC = 4.72
 
 # Wider soft bands between stops (0–1); longer line = broader blends on screen
 _SPLASH_GRADIENT_STOP_POS = (0.0, 0.26, 0.74, 1.0)
@@ -160,13 +167,17 @@ class AnimatedSplashWidget(QWidget):
         self._speed_factor = random.uniform(_SPLASH_SPEED_MIN, _SPLASH_SPEED_MAX)
         self._target_speed = self._speed_factor
         self._speed_timer_sec = 0.0
+        self._tick_elapsed = QElapsedTimer()
+        self._last_tick_sec = 0.0
 
         self.setStyleSheet(_content_stylesheet(self._palette))
         self._build_content()
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._on_tick)
-        self._timer.start(_SPLASH_ANIM_MS)
+        self._timer.setInterval(repaint_interval_ms())
+        self._tick_elapsed.start()
+        self._timer.start()
 
     def _build_content(self) -> None:
         layout = QVBoxLayout(self)
@@ -209,15 +220,23 @@ class AnimatedSplashWidget(QWidget):
         self._target_speed = random.uniform(_SPLASH_SPEED_MIN, _SPLASH_SPEED_MAX)
 
     def _on_tick(self) -> None:
-        dt = _SPLASH_ANIM_MS / 1000.0
+        now_sec = self._tick_elapsed.elapsed() / 1000.0
+        dt = clamp_dt_seconds(now_sec - self._last_tick_sec)
+        self._last_tick_sec = now_sec
+
         self._speed_timer_sec += dt
         if self._speed_timer_sec >= _SPLASH_SPEED_CHANGE_SEC:
             self._speed_timer_sec = 0.0
             self._pick_new_scroll_speed()
-        self._speed_factor += (self._target_speed - self._speed_factor) * _SPLASH_SPEED_LERP
+        self._speed_factor = exponential_step(
+            self._speed_factor,
+            self._target_speed,
+            dt,
+            _SPLASH_SPEED_RESPONSE_SEC,
+        )
 
-        step = _SPLASH_PHASE_STEP_BASE * self._speed_factor
-        self._phase += step * self._scroll_sign
+        phase_delta = _SPLASH_PHASE_SPEED_BASE * self._speed_factor * dt
+        self._phase += phase_delta * self._scroll_sign
         if self._phase >= 1.0:
             self._phase = 1.0 - (self._phase - 1.0)
             self._scroll_sign = -1.0
@@ -229,12 +248,12 @@ class AnimatedSplashWidget(QWidget):
             self._direction_timer_sec = 0.0
             self._pick_new_direction()
 
-        delta = self._target_angle - self._angle
-        while delta > math.pi:
-            delta -= 2.0 * math.pi
-        while delta < -math.pi:
-            delta += 2.0 * math.pi
-        self._angle += delta * _SPLASH_ANGLE_LERP
+        self._angle = angle_step_toward(
+            self._angle,
+            self._target_angle,
+            dt,
+            _SPLASH_ANGLE_RESPONSE_SEC,
+        )
         self.update()
 
     def paintEvent(self, event) -> None:  # noqa: ANN001, N802
