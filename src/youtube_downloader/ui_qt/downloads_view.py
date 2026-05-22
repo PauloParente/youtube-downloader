@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -68,15 +67,12 @@ from youtube_downloader.ui_qt.widgets import (
     PageHeader,
     PrimaryButton,
     SecondaryButton,
-    SectionTitle,
     apply_page_margins,
     muted_label,
 )
 
 logger = get_logger(__name__)
 
-LOG_TEXTBOX_HEIGHT = 160
-LOG_TEXTBOX_HEIGHT_COLLAPSED = 48
 QUEUE_URL_TRUNCATE = 58
 DEFAULT_STATUS_TEXT = "Pronto para baixar."
 DOWNLOAD_BTN_LABEL = "Baixar"
@@ -102,6 +98,8 @@ class DownloadsView(QWidget):
         pop_next_queue_url: Callable[[], Optional[str]],
         on_sync_queue_structure: Callable[[], None],
         on_sync_now_playing: Callable[[], None],
+        on_append_log: Callable[[str], None],
+        on_set_activity_clear_enabled: Callable[[bool], None] | None = None,
         on_open_queue: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent)
@@ -122,18 +120,16 @@ class DownloadsView(QWidget):
         self._pop_next_queue_url = pop_next_queue_url
         self._on_sync_queue_structure = on_sync_queue_structure
         self._on_sync_now_playing = on_sync_now_playing
+        self._on_append_log = on_append_log
+        self._on_set_activity_clear_enabled = on_set_activity_clear_enabled
         self._on_open_queue = on_open_queue
 
         self._is_downloading = False
-        self._collapsed_activity_after_success = False
-        self._log_lines_since_expand = 0
         self._last_progress_percent: Optional[float] = None
         self._now_playing_title: Optional[str] = None
         self._preview_panel: Optional[DownloadsPreviewPanel] = None
         self._status_reset_after_id: Optional[int] = None
         self._last_download_filepath: Optional[str] = None
-        self._log_body: Optional[QWidget] = None
-        self._log_expanded = True
         self._build_ui()
         self._bind_shortcuts()
 
@@ -155,8 +151,6 @@ class DownloadsView(QWidget):
         if settings.quality in QUALITY_OPTIONS:
             self._set_quality_combo(settings.quality)
         self._options_bar.set_audio_only(settings.audio_only)
-        self._log_expanded = settings.activity_log_expanded
-        self._apply_log_panel_visibility()
         self._update_destination_chip()
 
     def paste_url(self) -> None:
@@ -294,36 +288,6 @@ class DownloadsView(QWidget):
 
     def _update_progress_percent(self, percent: Optional[float]) -> None:
         self._last_progress_percent = percent
-
-    def _toggle_log_panel(self) -> None:
-        if self._log_body is None:
-            return
-        self._log_expanded = not self._log_expanded
-        self._apply_log_panel_visibility()
-        if self._log_expanded:
-            self._log_lines_since_expand = 0
-            self._update_activity_badge()
-        self._persist_activity_log_state()
-
-    def _apply_log_panel_visibility(self) -> None:
-        if self._log_body is None:
-            return
-        self._log_body.setVisible(True)
-        height = LOG_TEXTBOX_HEIGHT if self._log_expanded else LOG_TEXTBOX_HEIGHT_COLLAPSED
-        self._log_box.setFixedHeight(height)
-        icon_on_button(self._log_toggle_btn, "chevron", size=14)
-
-    def _persist_activity_log_state(self) -> None:
-        self._on_persist_settings()
-
-    def _update_activity_badge(self) -> None:
-        if not hasattr(self, "_activity_badge"):
-            return
-        if self._log_expanded or self._log_lines_since_expand <= 0:
-            self._activity_badge.hide()
-        else:
-            self._activity_badge.setText(str(self._log_lines_since_expand))
-            self._activity_badge.show()
 
     def _update_enqueue_label(self) -> None:
         count = len(self._get_queue_snapshot())
@@ -471,36 +435,6 @@ class DownloadsView(QWidget):
         self._set_quality_combo(QUALITY_OPTIONS[0])
         self._preview_panel.attach_to(scroll_layout, options_bar=self._options_bar)
 
-        log_header = QHBoxLayout()
-        self._log_toggle_btn = QPushButton()
-        self._log_toggle_btn.setObjectName("sectionToggle")
-        icon_on_button(self._log_toggle_btn, "chevron", size=14)
-        self._log_toggle_btn.clicked.connect(self._toggle_log_panel)
-        log_header.addWidget(self._log_toggle_btn)
-        log_header.addWidget(SectionTitle("Atividade"))
-        self._activity_badge = QLabel("0")
-        self._activity_badge.setObjectName("durationBadge")
-        self._activity_badge.hide()
-        log_header.addWidget(self._activity_badge)
-        log_header.addStretch()
-        self._clear_log_btn = QPushButton("Limpar")
-        self._clear_log_btn.clicked.connect(self._clear_log)
-        log_header.addWidget(self._clear_log_btn)
-        scroll_layout.addLayout(log_header)
-
-        log_card = QFrame()
-        log_card.setObjectName("card")
-        log_card_layout = QVBoxLayout(log_card)
-        self._log_body = QWidget()
-        log_body_layout = QVBoxLayout(self._log_body)
-        self._log_box = QPlainTextEdit()
-        self._log_box.setObjectName("logInset")
-        self._log_box.setReadOnly(True)
-        self._log_box.setFixedHeight(LOG_TEXTBOX_HEIGHT)
-        log_body_layout.addWidget(self._log_box)
-        log_card_layout.addWidget(self._log_body)
-        scroll_layout.addWidget(log_card)
-
         scroll.setWidget(scroll_content)
         root.addWidget(scroll, stretch=1)
 
@@ -554,8 +488,6 @@ class DownloadsView(QWidget):
 
         root.addWidget(self._action_dock)
 
-        self._log_expanded = self._get_app_settings().activity_log_expanded
-        self._apply_log_panel_visibility()
         self._on_url_changed()
         self._sync_action_buttons()
         self._sync_download_button()
@@ -580,7 +512,7 @@ class DownloadsView(QWidget):
             auto_download_subtitles=app.auto_download_subtitles,
             appearance_mode=app.appearance_mode,
             cookies_file=app.cookies_file,
-            activity_log_expanded=self._log_expanded,
+            activity_log_expanded=app.activity_log_expanded,
         )
 
     def _on_options_changed(self) -> None:
@@ -599,9 +531,6 @@ class DownloadsView(QWidget):
         self._url_entry.clear()
         if not self._is_downloading and self._preview_panel is not None:
             self._preview_panel.clear()
-
-    def _clear_log(self) -> None:
-        self._log_box.clear()
 
     def _set_expand_busy(self, busy: bool) -> None:
         self._expanding_playlist = busy
@@ -764,13 +693,7 @@ class DownloadsView(QWidget):
         self._open_path_in_explorer(output_dir)
 
     def _append_log(self, message: str) -> None:
-        self._log_box.appendPlainText(message)
-        self._log_box.verticalScrollBar().setValue(
-            self._log_box.verticalScrollBar().maximum()
-        )
-        if not self._log_expanded:
-            self._log_lines_since_expand += 1
-            self._update_activity_badge()
+        self._on_append_log(message)
 
     def _set_download_status(self, text: str) -> None:
         self._status_label.setText(text)
@@ -829,7 +752,8 @@ class DownloadsView(QWidget):
     def _set_controls_enabled(self, enabled: bool) -> None:
         self._clear_url_btn.setEnabled(True)
         self._url_entry.setEnabled(True)
-        self._clear_log_btn.setEnabled(enabled)
+        if self._on_set_activity_clear_enabled is not None:
+            self._on_set_activity_clear_enabled(enabled)
         self._open_folder_btn.setEnabled(enabled)
         if not enabled:
             self._open_file_btn.setEnabled(False)
@@ -994,10 +918,10 @@ class DownloadsView(QWidget):
                 self._set_download_status(event.message)
 
         elif event.event_type == EventType.LOG:
-            self._append_log(event.message)
             if event.percent is not None:
                 self._update_progress_percent(event.percent)
-            self._set_download_status(event.message)
+            if event.message:
+                self._set_download_status(event.message)
 
         elif event.event_type in (
             EventType.DONE,
@@ -1009,13 +933,7 @@ class DownloadsView(QWidget):
                     self._update_progress_percent(event.percent)
                 elif event.event_type == EventType.DONE:
                     self._update_progress_percent(1.0)
-                self._append_log(event.message)
                 if event.event_type == EventType.DONE:
-                    if not self._collapsed_activity_after_success:
-                        self._collapsed_activity_after_success = True
-                        self._log_expanded = False
-                        self._apply_log_panel_visibility()
-                        self._on_persist_settings()
                     if self._preview_panel is not None:
                         self._preview_panel.hide_alert()
                     if self._has_pending_queue():

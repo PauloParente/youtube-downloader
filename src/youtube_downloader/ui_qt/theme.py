@@ -258,6 +258,9 @@ QFrame#skeletonLine {{
     border-radius: 4px;
     max-height: 10px;
 }}
+QLabel#activityLastLine {{
+    padding: 0 2px 4px 2px;
+}}
 QFrame#actionDock {{
     background-color: {p.app_bg};
     border-top: 1px solid {p.divider};
