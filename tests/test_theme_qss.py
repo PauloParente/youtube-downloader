@@ -40,6 +40,7 @@ def test_dark_qss_new_selectors() -> None:
     assert "QLineEdit#urlHero" in qss
     assert "QFrame#progressStrip" in qss
     assert "QFrame#skeletonLine" in qss
+    assert "QLabel#activityLastLine" in qss
     assert "QFrame#actionDock" in qss
     assert "QPushButton#segment" in qss
     assert "QPushButton#primaryOutline" in qss

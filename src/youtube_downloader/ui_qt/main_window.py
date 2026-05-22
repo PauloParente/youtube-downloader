@@ -113,6 +113,7 @@ class MainWindow(QMainWindow):
         self._title_bar: Optional[CustomTitleBar] = None
         self._stack: Optional[QStackedWidget] = None
         self._ffmpeg_status_timer = False
+        self._activity_log_buffer: list[str] = []
         self._resize_edge = ResizeEdge.NONE
         self._resize_start_global: Optional[QPointF] = None
         self._resize_start_geom: Optional[QRect] = None
@@ -266,6 +267,8 @@ class MainWindow(QMainWindow):
             pop_next_queue_url=self._pop_next_queue_url,
             on_sync_queue_structure=self._sync_queue_structure,
             on_sync_now_playing=self._sync_now_playing_panel,
+            on_append_log=self._append_activity_log,
+            on_set_activity_clear_enabled=self._set_activity_clear_enabled,
             on_open_queue=lambda: self._switch_view("queue"),
         )
         self._stack.addWidget(self._downloads_view)
@@ -307,7 +310,10 @@ class MainWindow(QMainWindow):
                     if self._downloads_view
                     else None
                 ),
+                activity_log_expanded=self._settings.activity_log_expanded,
+                on_activity_expanded_changed=self._persist_settings,
             )
+            self._flush_activity_log_buffer()
             widget = self._queue_view
         elif view_id == "library":
             from youtube_downloader.ui_qt.library_view import LibraryView
@@ -358,6 +364,26 @@ class MainWindow(QMainWindow):
                 self,
                 lambda vid=view_id: self._switch_view(vid),
             )
+
+    def _append_activity_log(self, message: str) -> None:
+        text = (message or "").strip()
+        if not text:
+            return
+        if self._queue_view is not None:
+            self._queue_view.append_log(text)
+        else:
+            self._activity_log_buffer.append(text)
+
+    def _flush_activity_log_buffer(self) -> None:
+        if self._queue_view is None or not self._activity_log_buffer:
+            return
+        for line in self._activity_log_buffer:
+            self._queue_view.append_log(line)
+        self._activity_log_buffer.clear()
+
+    def _set_activity_clear_enabled(self, enabled: bool) -> None:
+        if self._queue_view is not None:
+            self._queue_view.set_activity_clear_enabled(enabled)
 
     def _update_nav_queue_badge(self) -> None:
         if self._sidebar is not None:
@@ -449,16 +475,14 @@ class MainWindow(QMainWindow):
     def _remove_queue_at(self, index: int) -> None:
         if self._download_queue.remove_at(index):
             self._sync_queue_structure()
-            if self._downloads_view:
-                self._downloads_view.append_log(f"Removido da fila (posição {index + 1}).")
+            self._append_activity_log(f"Removido da fila (posição {index + 1}).")
 
     def _clear_download_queue(self) -> None:
         if not self._download_queue.snapshot():
             return
         self._download_queue.clear()
         self._sync_queue_structure()
-        if self._downloads_view:
-            self._downloads_view.append_log("Fila esvaziada.")
+        self._append_activity_log("Fila esvaziada.")
 
     def _pop_next_queue_url(self) -> str | None:
         url = self._download_queue.pop_next()
@@ -733,6 +757,10 @@ class MainWindow(QMainWindow):
             self._sidebar.refresh_theme()
         if self._downloads_view:
             self._downloads_view.apply_settings(settings)
+        if self._queue_view:
+            self._queue_view.apply_activity_settings(
+                activity_log_expanded=settings.activity_log_expanded,
+            )
         if self._settings_view:
             self._settings_view.load_settings(settings)
             self._settings_view.refresh_section_icons()
@@ -741,12 +769,17 @@ class MainWindow(QMainWindow):
         if self._downloads_view is None:
             return
         collected = self._downloads_view.collect_settings()
+        activity_expanded = (
+            self._queue_view.activity_log_expanded()
+            if self._queue_view is not None
+            else collected.activity_log_expanded
+        )
         self._settings = replace(
             self._settings,
             output_dir=collected.output_dir,
             quality=collected.quality,
             audio_only=collected.audio_only,
-            activity_log_expanded=collected.activity_log_expanded,
+            activity_log_expanded=activity_expanded,
         )
         save_settings(self._settings)
 

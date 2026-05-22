@@ -1,4 +1,4 @@
-"""Queue view — now playing and pending items."""
+"""Queue view — now playing, activity log, and pending items."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 
 from youtube_downloader.core.logging_config import get_logger
 from youtube_downloader.core.metadata import VideoPreview, format_duration
@@ -15,8 +15,10 @@ from youtube_downloader.core.models import EventType, ProgressEvent
 from youtube_downloader.core.preview_cache import CARD_THUMB_SIZE, pil_rgb_from_bytes
 from youtube_downloader.core.text_utils import truncate_text
 from youtube_downloader.ui_qt.icons import icon_on_button
+from youtube_downloader.ui_qt.theme_tokens import SPACE_LG
 from youtube_downloader.ui_qt.util import pixmap_from_pil, schedule
 from youtube_downloader.ui_qt.widgets import (
+    ActivityLogPanel,
     Card,
     CompactMediaRow,
     EmptyState,
@@ -32,6 +34,8 @@ logger = get_logger(__name__)
 QUEUE_URL_TRUNCATE = 58
 STRUCTURE_DEBOUNCE_MS = 150
 LOADING_TITLE = "Carregando…"
+LEFT_COLUMN_STRETCH = 2
+RIGHT_COLUMN_STRETCH = 1
 
 
 @dataclass
@@ -51,6 +55,8 @@ class QueueView(QWidget):
         on_remove_queue_at: Callable[[int], None],
         on_cancel_download: Callable[[], None],
         on_skip_download: Callable[[], None],
+        activity_log_expanded: bool = True,
+        on_activity_expanded_changed: Callable[[], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -61,11 +67,14 @@ class QueueView(QWidget):
         self._on_remove_queue_at = on_remove_queue_at
         self._on_cancel_download = on_cancel_download
         self._on_skip_download = on_skip_download
+        self._on_activity_expanded_changed = on_activity_expanded_changed
         self._is_downloading = False
         self._now_playing_url = ""
+        self._collapsed_activity_after_success = False
         self._cards_by_url: dict[str, _PendingCardUi] = {}
         self._structure_timer_pending = False
         self._build_ui()
+        self._activity_panel.set_expanded(activity_log_expanded)
         self.refresh_structure()
 
     def _build_ui(self) -> None:
@@ -73,16 +82,29 @@ class QueueView(QWidget):
         apply_page_margins(layout)
         header = PageHeader(
             "Fila",
-            "Acompanhe o download atual e os próximos da fila.",
+            "Acompanhe o download atual, o log e os próximos da fila.",
         )
         layout.addWidget(header)
         self._subtitle = header.subtitle_label
 
+        columns = QHBoxLayout()
+        columns.setSpacing(SPACE_LG)
+
+        main_column = QVBoxLayout()
+        main_column.setSpacing(SPACE_LG)
         self._now_playing = QueueNowPlayingCard(
             on_cancel=self._on_cancel_download,
             on_skip=self._on_skip_download,
         )
-        layout.addWidget(self._now_playing)
+        main_column.addWidget(self._now_playing)
+        self._activity_panel = ActivityLogPanel(
+            on_expanded_changed=self._on_activity_expanded_changed,
+        )
+        main_column.addWidget(self._activity_panel, stretch=1)
+
+        main_host = QWidget()
+        main_host.setLayout(main_column)
+        columns.addWidget(main_host, LEFT_COLUMN_STRETCH)
 
         pending_card = Card()
         pending_layout = pending_card.body_layout
@@ -96,9 +118,23 @@ class QueueView(QWidget):
         self._pending_layout = QVBoxLayout(self._pending_host)
         self._pending_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         scroll.setWidget(self._pending_host)
-        pending_layout.addWidget(scroll)
+        pending_layout.addWidget(scroll, stretch=1)
         self._empty_widget: Optional[EmptyState] = None
-        layout.addWidget(pending_card, stretch=1)
+        columns.addWidget(pending_card, RIGHT_COLUMN_STRETCH)
+
+        layout.addLayout(columns, stretch=1)
+
+    def activity_log_expanded(self) -> bool:
+        return self._activity_panel.is_expanded()
+
+    def apply_activity_settings(self, *, activity_log_expanded: bool) -> None:
+        self._activity_panel.set_expanded(activity_log_expanded)
+
+    def append_log(self, message: str) -> None:
+        self._activity_panel.append(message)
+
+    def set_activity_clear_enabled(self, enabled: bool) -> None:
+        self._activity_panel.set_clear_enabled(enabled)
 
     def _apply_now_playing_thumb(self, url: str) -> None:
         self._now_playing.apply_thumbnail(
@@ -136,8 +172,19 @@ class QueueView(QWidget):
         self._sync_action_buttons()
 
     def apply_progress_event(self, event: ProgressEvent) -> None:
+        if event.message and event.event_type in (
+            EventType.LOG,
+            EventType.DONE,
+            EventType.ERROR,
+            EventType.CANCELLED,
+        ):
+            self.append_log(event.message)
+
         if not self._is_downloading:
+            if event.event_type == EventType.ERROR:
+                self._activity_panel.set_expanded(True)
             return
+
         if event.event_type == EventType.PROGRESS:
             if event.percent is not None:
                 self._now_playing.set_percent(event.percent)
@@ -156,8 +203,13 @@ class QueueView(QWidget):
             self._now_playing.set_percent(1.0)
             if event.message:
                 self._now_playing.set_status(event.message)
-        elif event.event_type == EventType.ERROR and event.message:
-            self._now_playing.set_status(event.message)
+            if not self._collapsed_activity_after_success:
+                self._collapsed_activity_after_success = True
+                self._activity_panel.set_expanded(False)
+        elif event.event_type == EventType.ERROR:
+            if event.message:
+                self._now_playing.set_status(event.message)
+            self._activity_panel.set_expanded(True)
         elif event.event_type == EventType.CANCELLED:
             self._now_playing.set_status("Cancelando…")
 
@@ -177,7 +229,7 @@ class QueueView(QWidget):
             self._subtitle.setText(
                 f"{count} vídeo(s) aguardando na fila."
                 if count
-                else "Acompanhe o download atual e os próximos da fila."
+                else "Acompanhe o download atual, o log e os próximos da fila."
             )
 
     def refresh(self) -> None:

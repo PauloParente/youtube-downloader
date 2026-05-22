@@ -1,5 +1,6 @@
 """Reusable styled widgets."""
 
+from youtube_downloader.ui_qt.widgets.activity_log_panel import ActivityLogPanel
 from youtube_downloader.ui_qt.widgets.appearance_toggle import AppearanceToggle
 from youtube_downloader.ui_qt.widgets.buttons import (
     DangerButton,
@@ -33,6 +34,7 @@ from youtube_downloader.ui_qt.widgets.segmented_control import SegmentedControl
 from youtube_downloader.ui_qt.widgets.thumbnail import ThumbnailLabel
 
 __all__ = [
+    "ActivityLogPanel",
     "AppearanceToggle",
     "Card",
     "CompactMediaRow",

@@ -6,8 +6,8 @@ Especificação do comportamento da tela **Downloads**, da tela **Fila** na side
 
 | Tela | Conteúdo |
 |------|----------|
-| **Downloads** | Hero URL (validação visual, colar, **arrastar link**, + Fila, **Ver fila (N)**), preview (`EmptyState` vazio / skeleton / row), alerta de erro inline, barra **Vídeo \| Áudio** + qualidade, drawer **Atividade** (compacto quando fechado), action dock (chip pasta destino, status humanizado, Baixar) |
-| **Fila** (sidebar) | `QueueNowPlayingCard` (*Baixando agora*): `#surfaceInset` com miniatura 128×72 + coluna título/URL/status/%; barra de progresso em largura total; **Cancelar** / **Pular**. *Na fila*: `CompactMediaRow` (igual Histórico) com remover |
+| **Downloads** | Hero URL (validação visual, colar, **arrastar link**, + Fila, **Ver fila (N)**), preview (`EmptyState` vazio / skeleton / row), alerta de erro inline, barra **Vídeo \| Áudio** + qualidade, action dock (chip pasta destino, status humanizado, Baixar) |
+| **Fila** (sidebar) | Duas colunas: **esquerda (maior)** — *Baixando agora* (`QueueNowPlayingCard`) + **Atividade**; **direita (menor)** — *Na fila* com `CompactMediaRow` e remover |
 
 A lista de pendentes e o progresso do download em curso ficam na tela **Fila** (card *Baixando agora*). Na Downloads, o dock inferior mostra apenas mensagens de status resumidas (ex. “Baixando…”, “Download concluído.”).
 
@@ -31,6 +31,7 @@ Um único vídeo sem enfileirar = fila vazia na lista + **Baixar** no campo. Nã
 ## Erros amigáveis e feedback
 
 - Mensagens yt-dlp mapeadas em português via `core/download_errors.humanize_ytdlp_error` (log técnico mantido em **Atividade**).
+- **Atividade** (tela Fila, coluna esquerda): fechado mostra «Última: …» e badge de linhas novas; abre automaticamente em **ERROR**; fecha após o primeiro **DONE** (persistido em `activity_log_expanded`). Mensagens de enfileirar na Downloads também aparecem aqui.
 - Erro de download: status no dock + banner `#downloadAlert` acima do preview.
 - Progresso (% e barra): card *Baixando agora* na tela **Fila** (modo indeterminado ao expandir playlist ou preparar próximo da fila).
 
