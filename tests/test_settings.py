@@ -17,6 +17,16 @@ def test_coerce_activity_log_expanded() -> None:
     assert _coerce_settings({}).activity_log_expanded is True
 
 
+def test_coerce_sidebar_collapsed() -> None:
+    assert _coerce_settings({"sidebar_collapsed": True}).sidebar_collapsed is True
+    assert _coerce_settings({}).sidebar_collapsed is False
+
+
+def test_coerce_focus_queue_on_download() -> None:
+    assert _coerce_settings({"focus_queue_on_download": False}).focus_queue_on_download is False
+    assert _coerce_settings({}).focus_queue_on_download is True
+
+
 def _foreign_unwritable_path() -> str:
     if sys.platform == "win32":
         return r"Z:\no-such-volume\YouTubeDownloader\downloads"

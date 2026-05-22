@@ -16,9 +16,8 @@ class NavItem:
 NAV_ITEMS: tuple[NavItem, ...] = (
     NavItem("download", "download", "Downloads", "Ctrl+1"),
     NavItem("queue", "queue", "Fila", "Ctrl+2"),
-    NavItem("library", "library", "Biblioteca", "Ctrl+3"),
-    NavItem("history", "history", "Histórico", "Ctrl+4"),
-    NavItem("settings", "settings", "Configurações", "Ctrl+5"),
+    NavItem("media", "library", "Os meus downloads", "Ctrl+3"),
+    NavItem("settings", "settings", "Configurações", "Ctrl+4"),
 )
 
 DEFAULT_VIEW_ID = NAV_ITEMS[0].view_id

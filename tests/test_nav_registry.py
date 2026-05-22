@@ -12,7 +12,7 @@ from youtube_downloader.ui_qt.nav_sidebar import NavSidebar
 
 
 def test_nav_items_count() -> None:
-    assert len(NAV_ITEMS) == 5
+    assert len(NAV_ITEMS) == 4
 
 
 def test_stack_index_matches_item_position() -> None:

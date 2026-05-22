@@ -206,4 +206,3 @@ class MediaPreviewRow(QFrame):
         else:
             self._thumb.set_placeholder_text("")
 
-        self.set_options_visible(True)

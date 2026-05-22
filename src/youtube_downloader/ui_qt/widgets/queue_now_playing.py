@@ -14,9 +14,9 @@ from youtube_downloader.core.metadata import VideoPreview
 from youtube_downloader.core.preview_cache import CARD_THUMB_SIZE, pil_rgb_from_bytes
 from youtube_downloader.ui_qt.icons import icon_on_button
 from youtube_downloader.ui_qt.util import pixmap_from_bytes, pixmap_from_pil
-from youtube_downloader.ui_qt.widgets.buttons import GhostButton
+from youtube_downloader.ui_qt.widgets.buttons import DangerButton, GhostButton, LinkButton
 from youtube_downloader.ui_qt.widgets.card import Card
-from youtube_downloader.ui_qt.widgets.common import muted_label
+from youtube_downloader.ui_qt.widgets.common import muted_label, secondary_label
 from youtube_downloader.ui_qt.widgets.section import SectionTitle
 from youtube_downloader.ui_qt.widgets.thumbnail import ThumbnailLabel
 from youtube_downloader.ui_qt.theme_tokens import SPACE_SM
@@ -80,9 +80,18 @@ class QueueNowPlayingCard(Card):
         self._progress.setRange(0, 100)
         body.addWidget(self._progress)
 
+        self._idle_hint = secondary_label(
+            "Inicie um download na tela Downloads ou use + Fila para enfileirar."
+        )
+        self._idle_hint.setWordWrap(True)
+        self._idle_hint.hide()
+        body.addWidget(self._idle_hint)
+
+        self._idle_link: LinkButton | None = None
+
         actions = QHBoxLayout()
         actions.setSpacing(SPACE_SM)
-        self.cancel_button = GhostButton("Cancelar")
+        self.cancel_button = DangerButton("Cancelar")
         icon_on_button(self.cancel_button, "clear", size=16)
         self.cancel_button.clicked.connect(on_cancel)
         actions.addWidget(self.cancel_button)
@@ -94,19 +103,38 @@ class QueueNowPlayingCard(Card):
         body.addLayout(actions)
 
         self._active = False
+        self._indeterminate = False
         self.set_idle()
+
+    def configure_idle_actions(
+        self, *, on_open_downloads: Callable[[], None] | None = None
+    ) -> None:
+        if on_open_downloads is None:
+            return
+        if self._idle_link is None:
+            self._idle_link = LinkButton("Abrir Downloads")
+            self._idle_link.clicked.connect(on_open_downloads)
+            self.body_layout.addWidget(
+                self._idle_link, alignment=Qt.AlignmentFlag.AlignLeft
+            )
+        self._idle_link.show()
 
     def set_idle(self) -> None:
         self._active = False
+        self._indeterminate = False
         self._title.setText(IDLE_TITLE)
         self._meta.setText("")
         self._status.setText("")
         self._percent.setText("0%")
         self._thumb.set_placeholder_text("")
+        self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._progress.hide()
         self._status.hide()
         self._percent.hide()
+        self._idle_hint.show()
+        if self._idle_link is not None:
+            self._idle_link.show()
         self.cancel_button.setEnabled(False)
         self.skip_button.setEnabled(False)
 
@@ -119,6 +147,9 @@ class QueueNowPlayingCard(Card):
         percent: Optional[float] = None,
     ) -> None:
         self._active = True
+        self._idle_hint.hide()
+        if self._idle_link is not None:
+            self._idle_link.hide()
         self._title.setText(title.strip() or IDLE_TITLE)
         self._meta.setText(meta)
         self._status.setText(status or DEFAULT_STATUS)
@@ -126,12 +157,9 @@ class QueueNowPlayingCard(Card):
         self._percent.show()
         self._progress.show()
         if percent is not None:
-            value = int(percent * 100)
-            self._progress.setValue(value)
-            self._percent.setText(f"{value}%")
+            self._set_determinate_percent(percent)
         else:
-            self._progress.setValue(0)
-            self._percent.setText("0%")
+            self.set_indeterminate(True)
 
     def set_title(self, text: str) -> None:
         if text.strip():
@@ -141,12 +169,40 @@ class QueueNowPlayingCard(Card):
         if self._active:
             self._status.setText(text)
 
-    def set_percent(self, percent: Optional[float]) -> None:
-        if not self._active or percent is None:
+    def set_indeterminate(self, active: bool) -> None:
+        if not self._active:
             return
-        value = int(percent * 100)
+        self._indeterminate = active
+        if active:
+            self._progress.setRange(0, 0)
+            self._percent.setText("…")
+        else:
+            self._progress.setRange(0, 100)
+
+    def _set_determinate_percent(self, percent: float) -> None:
+        self._indeterminate = False
+        self._progress.setRange(0, 100)
+        value = max(0, min(100, int(percent * 100)))
         self._progress.setValue(value)
         self._percent.setText(f"{value}%")
+
+    def set_percent(self, percent: Optional[float]) -> None:
+        if not self._active:
+            return
+        if percent is None:
+            self.set_indeterminate(True)
+            return
+        self._set_determinate_percent(percent)
+
+    def set_meta_lines(self, url_line: str, hint: str = "") -> None:
+        if not self._active:
+            return
+        lines: list[str] = []
+        if url_line.strip():
+            lines.append(url_line.strip())
+        if hint.strip():
+            lines.append(hint.strip())
+        self._meta.setText("\n".join(lines))
 
     def set_pixmap(self, pixmap: QPixmap) -> None:
         if not pixmap.isNull():

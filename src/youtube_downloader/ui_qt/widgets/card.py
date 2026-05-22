@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QWidget
 
-from youtube_downloader.ui_qt.theme_tokens import CARD_PADDING
+from youtube_downloader.ui_qt.theme_tokens import CARD_PADDING, SPACE_SM
 
 
 class Card(QFrame):
@@ -15,7 +15,7 @@ class Card(QFrame):
         self._layout.setContentsMargins(
             CARD_PADDING, CARD_PADDING, CARD_PADDING, CARD_PADDING
         )
-        self._layout.setSpacing(8)
+        self._layout.setSpacing(SPACE_SM)
 
     @property
     def body_layout(self) -> QVBoxLayout:

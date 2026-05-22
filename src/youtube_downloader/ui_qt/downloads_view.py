@@ -8,9 +8,10 @@ from collections.abc import Callable
 from typing import Literal, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QKeySequence, QResizeEvent, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -53,15 +54,24 @@ from youtube_downloader.core.settings import AppSettings
 from youtube_downloader.core.text_utils import truncate_text
 from youtube_downloader.ui_qt.downloads_preview import DownloadsPreviewPanel
 from youtube_downloader.ui_qt.event_bridge import EventBridge
+from youtube_downloader.ui_qt.layout_breakpoints import downloads_toolbar_compact
 from youtube_downloader.ui_qt.playlist_choice_dialog import ask_video_in_playlist_choice
 from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
 from youtube_downloader.ui_qt.theme import polish_widget
-from youtube_downloader.ui_qt.theme_tokens import PAGE_MARGINS, SPACE_LG, SPACE_SM
+from youtube_downloader.ui_qt.theme_tokens import (
+    ICON_MD,
+    ICON_SM,
+    PAGE_MARGINS,
+    SPACE_LG,
+    SPACE_MD,
+    SPACE_SM,
+)
 from youtube_downloader.ui_qt.util import run_on_main, schedule
 from youtube_downloader.ui_qt.widgets.url_drop_line_edit import UrlDropLineEdit
 from youtube_downloader.ui_qt.widgets import (
+    DangerButton,
     DownloadOptionsBar,
-    GhostButton,
+    DownloadsNowPlayingStrip,
     IconButton,
     LinkButton,
     PageHeader,
@@ -70,6 +80,7 @@ from youtube_downloader.ui_qt.widgets import (
     apply_page_margins,
     muted_label,
 )
+from youtube_downloader.ui_qt.widgets.overflow_menu_button import OverflowMenuButton
 
 logger = get_logger(__name__)
 
@@ -101,6 +112,9 @@ class DownloadsView(QWidget):
         on_append_log: Callable[[str], None],
         on_set_activity_clear_enabled: Callable[[bool], None] | None = None,
         on_open_queue: Callable[[], None] | None = None,
+        on_open_settings: Callable[[], None] | None = None,
+        on_change_output_dir: Callable[[str], None] | None = None,
+        on_job_start: Callable[[bool], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self._event_bridge = event_bridge
@@ -123,8 +137,12 @@ class DownloadsView(QWidget):
         self._on_append_log = on_append_log
         self._on_set_activity_clear_enabled = on_set_activity_clear_enabled
         self._on_open_queue = on_open_queue
+        self._on_open_settings = on_open_settings
+        self._on_change_output_dir = on_change_output_dir
+        self._on_job_start = on_job_start
 
         self._is_downloading = False
+        self._toolbar_compact: bool | None = None
         self._last_progress_percent: Optional[float] = None
         self._now_playing_title: Optional[str] = None
         self._preview_panel: Optional[DownloadsPreviewPanel] = None
@@ -279,12 +297,19 @@ class DownloadsView(QWidget):
         if not url:
             self._url_valid_icon.hide()
             self._url_invalid_icon.hide()
+            self._url_entry.setToolTip("Cole ou arraste um link do YouTube")
         elif is_youtube_url(url):
             self._url_valid_icon.show()
             self._url_invalid_icon.hide()
+            self._url_valid_icon.setToolTip("Link do YouTube válido")
+            self._url_entry.setToolTip("Link do YouTube válido")
         else:
             self._url_valid_icon.hide()
             self._url_invalid_icon.show()
+            self._url_invalid_icon.setToolTip("Link não reconhecido como YouTube")
+            self._url_entry.setToolTip(
+                "Use um link watch, youtu.be ou playlist do YouTube"
+            )
 
     def _update_progress_percent(self, percent: Optional[float]) -> None:
         self._last_progress_percent = percent
@@ -292,12 +317,47 @@ class DownloadsView(QWidget):
     def _update_enqueue_label(self) -> None:
         count = len(self._get_queue_snapshot())
         self._enqueue_btn.setText(f"+ Fila ({count})" if count else "+ Fila")
-        if hasattr(self, "_view_queue_btn"):
+        if not self._toolbar_compact:
+            self._enqueue_btn.setToolTip("Adicionar à fila sem iniciar download")
+        if hasattr(self, "_queue_summary"):
             if count and self._on_open_queue is not None:
-                self._view_queue_btn.setText(f"Ver fila ({count})")
-                self._view_queue_btn.show()
+                suffix = "vídeo" if count == 1 else "vídeos"
+                self._queue_summary.setText(
+                    f"{count} {suffix} na fila · Ver fila"
+                )
+                self._queue_summary.show()
             else:
-                self._view_queue_btn.hide()
+                self._queue_summary.hide()
+        if self._preview_panel is not None:
+            if count and self._on_open_queue is not None:
+                suffix = "vídeo" if count == 1 else "vídeos"
+                self._preview_panel.update_empty_queue_link(f"Ver fila ({count})")
+            else:
+                self._preview_panel.update_empty_queue_link("")
+
+    def _show_enqueue_banner(self, message: str) -> None:
+        if hasattr(self, "_enqueue_banner"):
+            self._enqueue_banner_label.setText(message)
+            self._enqueue_banner.show()
+            schedule(self, 8000, self._hide_enqueue_banner)
+
+    def _hide_enqueue_banner(self) -> None:
+        if hasattr(self, "_enqueue_banner"):
+            self._enqueue_banner.hide()
+
+    def _sync_active_strip(self) -> None:
+        if not hasattr(self, "_active_strip"):
+            return
+        if not self._is_downloading:
+            self._active_strip.set_idle()
+            return
+        meta = self.get_now_playing_meta()
+        title = meta["title"] or truncate_text(meta["url"], 48) or "Baixando…"
+        self._active_strip.set_active(
+            title=title,
+            status=meta["status"],
+            percent=meta["percent"],
+        )
 
     def _update_url_clear_visibility(self) -> None:
         has_text = bool(self._url_entry.text().strip())
@@ -382,7 +442,7 @@ class DownloadsView(QWidget):
         self._url_entry = UrlDropLineEdit(self._on_url_dropped)
         self._url_entry.setObjectName("urlHero")
         self._url_entry.setPlaceholderText("Cole ou arraste um link do YouTube")
-        link_action = QAction(themed_icon("link", 18), "")
+        link_action = QAction(themed_icon("link", ICON_MD), "")
         self._url_entry.addAction(link_action, QLineEdit.ActionPosition.LeadingPosition)
         self._url_entry.textChanged.connect(self._on_url_changed)
         self._preview_panel = DownloadsPreviewPanel(
@@ -394,46 +454,74 @@ class DownloadsView(QWidget):
             on_open_queue=self._on_open_queue,
         )
 
+        self._enqueue_banner = QFrame()
+        self._enqueue_banner.setObjectName("statusBanner")
+        self._enqueue_banner.hide()
+        banner_layout = QHBoxLayout(self._enqueue_banner)
+        banner_layout.setContentsMargins(SPACE_MD, SPACE_SM, SPACE_MD, SPACE_SM)
+        self._enqueue_banner_label = muted_label("")
+        banner_layout.addWidget(self._enqueue_banner_label, stretch=1)
+        banner_close = IconButton(tooltip="Fechar")
+        icon_on_button(banner_close, "clear", size=ICON_SM)
+        banner_close.clicked.connect(self._hide_enqueue_banner)
+        banner_layout.addWidget(banner_close)
+        scroll_layout.addWidget(self._enqueue_banner)
+
         url_tool_row = QFrame()
         url_tool_row.setObjectName("urlToolRow")
         url_row = QHBoxLayout(url_tool_row)
         url_row.setContentsMargins(0, 0, 0, 0)
-        url_row.setSpacing(8)
+        url_row.setSpacing(SPACE_SM)
         url_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         url_row.addWidget(self._url_entry, stretch=1)
         self._url_valid_icon = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
         self._url_valid_icon.setObjectName("urlValidIcon")
-        self._url_valid_icon.setPixmap(themed_icon("link", 18).pixmap(18, 18))
+        self._url_valid_icon.setPixmap(themed_icon("link", ICON_MD).pixmap(ICON_MD, ICON_MD))
         self._url_valid_icon.hide()
         url_row.addWidget(self._url_valid_icon)
         self._url_invalid_icon = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
         self._url_invalid_icon.setObjectName("urlInvalidIcon")
-        self._url_invalid_icon.setPixmap(themed_icon("clear", 18).pixmap(18, 18))
+        self._url_invalid_icon.setPixmap(themed_icon("clear", ICON_MD).pixmap(ICON_MD, ICON_MD))
         self._url_invalid_icon.hide()
         url_row.addWidget(self._url_invalid_icon)
-        paste_btn = SecondaryButton("Colar")
-        icon_on_button(paste_btn, "link", size=18)
-        paste_btn.clicked.connect(self._paste_url)
-        url_row.addWidget(paste_btn)
+        self._paste_btn = SecondaryButton("Colar")
+        icon_on_button(self._paste_btn, "link", size=ICON_MD)
+        self._paste_btn.setToolTip("Colar link (Ctrl+V)")
+        self._paste_btn.clicked.connect(self._paste_url)
+        url_row.addWidget(self._paste_btn)
         self._enqueue_btn = SecondaryButton("+ Fila")
-        icon_on_button(self._enqueue_btn, "queue", size=18)
+        icon_on_button(self._enqueue_btn, "queue", size=ICON_MD)
         self._enqueue_btn.clicked.connect(self._enqueue_current_url)
         url_row.addWidget(self._enqueue_btn)
-        self._view_queue_btn = LinkButton("")
-        self._view_queue_btn.hide()
-        if self._on_open_queue is not None:
-            self._view_queue_btn.clicked.connect(self._on_open_queue)
-        url_row.addWidget(self._view_queue_btn)
         self._clear_url_btn = IconButton(tooltip="Limpar URL")
-        icon_on_button(self._clear_url_btn, "clear", size=16)
+        icon_on_button(self._clear_url_btn, "clear", size=ICON_SM)
         self._clear_url_btn.clicked.connect(self._clear_url)
         self._clear_url_btn.hide()
         url_row.addWidget(self._clear_url_btn)
         scroll_layout.addWidget(url_tool_row)
 
-        self._options_bar = DownloadOptionsBar(on_changed=self._on_options_changed)
+        self._queue_summary = LinkButton("")
+        self._queue_summary.hide()
+        if self._on_open_queue is not None:
+            self._queue_summary.clicked.connect(self._on_open_queue)
+        scroll_layout.addWidget(self._queue_summary)
+
+        self._options_bar = DownloadOptionsBar(
+            on_changed=self._on_download_options_changed,
+            on_open_settings=self._on_open_settings,
+        )
         self._set_quality_combo(QUALITY_OPTIONS[0])
-        self._preview_panel.attach_to(scroll_layout, options_bar=self._options_bar)
+        self._preview_panel.attach_to(
+            scroll_layout,
+            on_paste=self._paste_url,
+            on_open_queue=self._on_open_queue,
+        )
+        scroll_layout.addWidget(self._options_bar)
+
+        self._active_strip = DownloadsNowPlayingStrip(
+            on_open_queue=self._on_open_queue,
+        )
+        scroll_layout.addWidget(self._active_strip)
 
         scroll.setWidget(scroll_content)
         root.addWidget(scroll, stretch=1)
@@ -466,24 +554,27 @@ class DownloadsView(QWidget):
         self._update_destination_chip()
         btn_row.addWidget(self._destination_chip)
         self._open_folder_btn = QPushButton("Abrir pasta")
-        icon_on_button(self._open_folder_btn, "folder", size=18)
+        icon_on_button(self._open_folder_btn, "folder", size=ICON_MD)
         self._open_folder_btn.clicked.connect(self._open_folder)
-        btn_row.addWidget(self._open_folder_btn)
         self._open_file_btn = QPushButton("Abrir arquivo")
-        icon_on_button(self._open_file_btn, "file", size=18)
+        icon_on_button(self._open_file_btn, "file", size=ICON_MD)
         self._open_file_btn.setEnabled(False)
+        self._open_file_btn.hide()
         self._open_file_btn.clicked.connect(self._open_last_file)
         btn_row.addWidget(self._open_file_btn)
-        self._cancel_btn = GhostButton("Limpar URL")
-        icon_on_button(self._cancel_btn, "clear", size=16)
-        self._cancel_btn.clicked.connect(self._clear_url)
-        btn_row.addWidget(self._cancel_btn)
         btn_row.addStretch()
+        self._stop_btn = DangerButton("Cancelar")
+        icon_on_button(self._stop_btn, "clear", size=ICON_SM)
+        self._stop_btn.clicked.connect(self._cancel_download)
+        self._stop_btn.hide()
+        btn_row.addWidget(self._stop_btn)
         self._download_btn = PrimaryButton("Baixar")
-        icon_on_button(self._download_btn, "download", size=18)
+        icon_on_button(self._download_btn, "download", size=ICON_MD)
         self._download_btn.setMinimumWidth(140)
         self._download_btn.clicked.connect(self._start_download)
         btn_row.addWidget(self._download_btn)
+        self._dock_overflow = OverflowMenuButton()
+        btn_row.addWidget(self._dock_overflow)
         dock_layout.addLayout(btn_row)
 
         root.addWidget(self._action_dock)
@@ -492,6 +583,34 @@ class DownloadsView(QWidget):
         self._sync_action_buttons()
         self._sync_download_button()
         self._update_enqueue_label()
+        self._sync_dock_overflow()
+        self._apply_responsive_layout(force=True)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self, *, force: bool = False) -> None:
+        width = self.width()
+        if width <= 0:
+            return
+        compact = downloads_toolbar_compact(width)
+        if not force and compact == self._toolbar_compact:
+            return
+        self._toolbar_compact = compact
+        if compact:
+            self._paste_btn.setText("")
+            self._enqueue_btn.setText(
+                f"+ ({len(self._get_queue_snapshot())})"
+                if self._get_queue_snapshot()
+                else "+"
+            )
+        else:
+            self._paste_btn.setText("Colar")
+            self._update_enqueue_label()
+        if hasattr(self, "_shortcuts_hint"):
+            self._shortcuts_hint.setVisible(not compact)
+        self._sync_dock_overflow()
 
     def _output_dir(self) -> str:
         path = self._get_app_settings().output_dir.strip()
@@ -515,11 +634,20 @@ class DownloadsView(QWidget):
             activity_log_expanded=app.activity_log_expanded,
         )
 
-    def _on_options_changed(self) -> None:
-        self._on_persist_settings()
+    def _on_download_options_changed(self) -> None:
+        """Opções locais; persistência ao clicar em Baixar."""
+        pass
 
-    def _on_quality_changed(self, _choice: str) -> None:
-        self._on_persist_settings()
+    def _pick_output_folder(self) -> None:
+        initial = self._output_dir()
+        folder = QFileDialog.getExistingDirectory(
+            self, "Pasta de destino dos downloads", initial
+        )
+        if not folder:
+            return
+        if self._on_change_output_dir is not None:
+            self._on_change_output_dir(folder)
+        self._update_destination_chip()
 
     def _paste_url(self) -> None:
         text = QApplication.clipboard().text().strip()
@@ -615,6 +743,12 @@ class DownloadsView(QWidget):
 
     def _log_enqueue_result(self, added: int, total: int) -> None:
         self._append_log(format_enqueue_log(added, total))
+        if added > 0:
+            suffix = "vídeo" if added == 1 else "vídeos"
+            msg = f"{added} {suffix} adicionado(s) à fila."
+            if self._on_open_queue is not None:
+                msg += " Ver fila na sidebar ou no link abaixo."
+            self._show_enqueue_banner(msg)
 
     def _on_urls_resolved(
         self,
@@ -664,6 +798,8 @@ class DownloadsView(QWidget):
             and os.path.isfile(self._last_download_filepath)
         )
         self._open_file_btn.setEnabled(enabled)
+        self._open_file_btn.setVisible(enabled)
+        self._sync_dock_overflow()
 
     def _open_last_file(self) -> None:
         if self._last_download_filepath and os.path.isfile(self._last_download_filepath):
@@ -768,17 +904,35 @@ class DownloadsView(QWidget):
     def _has_pending_queue(self) -> bool:
         return bool(self._get_queue_snapshot())
 
+    def title_bar_activity_hint(self) -> str:
+        if self._is_downloading:
+            if self._last_progress_percent is not None:
+                return f"Baixando · {int(self._last_progress_percent * 100)}%"
+            return "Baixando…"
+        pending = len(self._get_queue_snapshot())
+        if pending:
+            return f"Fila: {pending}"
+        return ""
+
     def _sync_action_buttons(self) -> None:
         if self._is_downloading:
-            self._cancel_btn.hide()
+            self._stop_btn.show()
+            self._stop_btn.setEnabled(True)
         else:
-            self._cancel_btn.show()
-            self._cancel_btn.setText("Limpar URL")
-            try:
-                self._cancel_btn.clicked.disconnect()
-            except RuntimeError:
-                pass
-            self._cancel_btn.clicked.connect(self._clear_url)
+            self._stop_btn.hide()
+        self._sync_dock_overflow()
+
+    def _sync_dock_overflow(self) -> None:
+        has_url = bool(self._url_entry.text().strip())
+        file_enabled = self._open_file_btn.isEnabled()
+        actions: list[tuple[str, Callable[[], None], bool]] = [
+            (self._destination_chip.text(), self._open_folder, True),
+            ("Alterar pasta de destino…", self._pick_output_folder, True),
+            ("Abrir pasta de destino", self._open_folder, True),
+            ("Abrir último arquivo", self._open_last_file, file_enabled),
+            ("Limpar URL", self._clear_url, has_url and not self._is_downloading),
+        ]
+        self._dock_overflow.set_actions(actions)
 
     def _between_queue_items_ui(self) -> None:
         """Keep batch controls while the next queued item is about to start."""
@@ -787,6 +941,7 @@ class DownloadsView(QWidget):
         self._set_download_status("Preparando próximo da fila…")
         self._sync_action_buttons()
         self._on_sync_now_playing()
+        self._sync_active_strip()
 
     def _release_download_ui(self) -> None:
         self._is_downloading = False
@@ -797,6 +952,7 @@ class DownloadsView(QWidget):
         self._schedule_status_reset()
         self._sync_queue_ui()
         self._sync_download_button()
+        self._sync_active_strip()
 
     def _start_download(self) -> None:
         if self._is_downloading or self._expanding_playlist:
@@ -842,6 +998,8 @@ class DownloadsView(QWidget):
             audio_only=self._options_bar.is_audio_only(),
             preferences=self._get_app_settings(),
         )
+        if self._on_job_start is not None:
+            self._on_job_start(queue_continue)
         if not queue_continue:
             self._on_persist_settings()
         if not self._preview_cache.get(cleaned):
@@ -862,6 +1020,7 @@ class DownloadsView(QWidget):
             self._preview_panel.hide_alert()
         self._sync_queue_ui()
         self._on_sync_now_playing()
+        self._sync_active_strip()
 
         self._on_start_download(job)
 
@@ -916,12 +1075,14 @@ class DownloadsView(QWidget):
                 self._update_progress_percent(event.percent)
             if event.message:
                 self._set_download_status(event.message)
+            self._sync_active_strip()
 
         elif event.event_type == EventType.LOG:
             if event.percent is not None:
                 self._update_progress_percent(event.percent)
             if event.message:
                 self._set_download_status(event.message)
+            self._sync_active_strip()
 
         elif event.event_type in (
             EventType.DONE,

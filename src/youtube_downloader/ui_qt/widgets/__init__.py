@@ -10,9 +10,11 @@ from youtube_downloader.ui_qt.widgets.buttons import (
     PrimaryButton,
     SecondaryButton,
 )
+from youtube_downloader.ui_qt.widgets.overflow_menu_button import OverflowMenuButton
 from youtube_downloader.ui_qt.widgets.preview_empty_panel import PreviewEmptyPanel
 from youtube_downloader.ui_qt.widgets.card import Card
 from youtube_downloader.ui_qt.widgets.common import (
+    apply_layout_spacing,
     apply_page_margins,
     field_label,
     muted_label,
@@ -23,6 +25,9 @@ from youtube_downloader.ui_qt.widgets.compact_media_row import CompactMediaRow
 from youtube_downloader.ui_qt.widgets.download_alert import DownloadAlert
 from youtube_downloader.ui_qt.widgets.loading_spinner import LoadingSpinner
 from youtube_downloader.ui_qt.widgets.download_options_bar import DownloadOptionsBar
+from youtube_downloader.ui_qt.widgets.downloads_now_playing_strip import (
+    DownloadsNowPlayingStrip,
+)
 from youtube_downloader.ui_qt.widgets.empty_state import EmptyState
 from youtube_downloader.ui_qt.widgets.download_progress_strip import DownloadProgressStrip
 from youtube_downloader.ui_qt.widgets.media_preview_row import MediaPreviewRow
@@ -43,11 +48,13 @@ __all__ = [
     "DownloadAlert",
     "LoadingSpinner",
     "DownloadOptionsBar",
+    "DownloadsNowPlayingStrip",
     "DownloadProgressStrip",
     "GhostButton",
     "IconButton",
     "LinkButton",
     "MediaPreviewRow",
+    "OverflowMenuButton",
     "PageHeader",
     "QueueNowPlayingCard",
     "PreviewSkeleton",
@@ -58,6 +65,7 @@ __all__ = [
     "SegmentedControl",
     "Separator",
     "ThumbnailLabel",
+    "apply_layout_spacing",
     "apply_page_margins",
     "field_label",
     "muted_label",

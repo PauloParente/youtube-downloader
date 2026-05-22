@@ -11,7 +11,14 @@ from youtube_downloader.ui_qt.icons import icon_on_button
 from youtube_downloader.ui_qt.nav_registry import DEFAULT_VIEW_ID, NAV_ITEMS
 from youtube_downloader.ui_qt.nav_shortcuts import format_queue_badge, nav_tooltip
 from youtube_downloader.ui_qt.theme import polish_widget
-from youtube_downloader.ui_qt.theme_tokens import NAV_ITEM_HEIGHT, SIDEBAR_WIDTH
+from youtube_downloader.ui_qt.theme_tokens import (
+    ICON_MD,
+    NAV_ITEM_HEIGHT,
+    SIDEBAR_WIDTH,
+    SIDEBAR_WIDTH_COLLAPSED,
+    SPACE_SM,
+    SPACE_XS,
+)
 from youtube_downloader.ui_qt.widgets import AppearanceToggle, Separator
 from youtube_downloader.ui_qt.widgets.nav_button import NavButton
 from youtube_downloader.ui_qt.widgets.nav_list import NavListWidget
@@ -26,20 +33,31 @@ class NavSidebar(QFrame):
         on_select: Callable[[str], None],
         on_about: Callable[[], None],
         on_appearance_changed: Callable[[str], None] | None = None,
+        on_collapsed_changed: Callable[[bool], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("sidebar")
+        self._collapsed = False
+        self._on_collapsed_changed = on_collapsed_changed
         self.setFixedWidth(SIDEBAR_WIDTH)
         self._on_select = on_select
         self._on_about = on_about
         self._on_appearance_changed = on_appearance_changed
         self._active_id = DEFAULT_VIEW_ID
         self._icon_names: dict[str, str] = {}
+        self._nav_labels: dict[str, str] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 16)
-        layout.setSpacing(6)
+        layout.setSpacing(SPACE_XS + 2)
+
+        collapse_btn = NavButton("", focusable=False)
+        collapse_btn.setToolTip("Recolher barra lateral")
+        icon_on_button(collapse_btn, "chevron", size=ICON_MD)
+        collapse_btn.clicked.connect(self._toggle_collapsed)
+        self._collapse_btn = collapse_btn
+        layout.addWidget(collapse_btn)
 
         self._nav_list = NavListWidget()
         self._nav_list.setSizePolicy(
@@ -58,7 +76,8 @@ class NavSidebar(QFrame):
         for item in NAV_ITEMS:
             btn = NavButton(item.label)
             btn.setToolTip(nav_tooltip(item.label, item.view_id))
-            icon_on_button(btn, item.icon, size=18)
+            icon_on_button(btn, item.icon, size=ICON_MD)
+            self._nav_labels[item.view_id] = item.label
             self._icon_names[item.view_id] = item.icon
             btn.clicked.connect(lambda checked, vid=item.view_id: self._select(vid))
             badge = self._queue_badge if item.view_id == "queue" else None
@@ -72,16 +91,17 @@ class NavSidebar(QFrame):
         footer_row.setContentsMargins(0, 0, 0, 0)
         footer_row.setSpacing(6)
 
-        about_btn = NavButton("Sobre", focusable=False)
-        about_btn.setToolTip("Sobre")
-        icon_on_button(about_btn, "about", size=18)
-        about_btn.clicked.connect(on_about)
-        about_btn.setSizePolicy(
+        self._about_label = "Sobre"
+        self._about_btn = NavButton(self._about_label, focusable=False)
+        self._about_btn.setToolTip("Sobre")
+        icon_on_button(self._about_btn, "about", size=ICON_MD)
+        self._about_btn.clicked.connect(on_about)
+        self._about_btn.setSizePolicy(
             QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Fixed,
         )
-        about_btn.setFixedHeight(NAV_ITEM_HEIGHT)
-        footer_row.addWidget(about_btn, stretch=1)
+        self._about_btn.setFixedHeight(NAV_ITEM_HEIGHT)
+        footer_row.addWidget(self._about_btn, stretch=1)
 
         self._appearance_toggle = AppearanceToggle(
             on_mode_changed=self._on_appearance_toggle,
@@ -104,7 +124,35 @@ class NavSidebar(QFrame):
             if row is None:
                 continue
             accent = view_id == self._active_id
-            icon_on_button(row.button, icon_name, size=18, accent=accent)
+            icon_on_button(row.button, icon_name, size=ICON_MD, accent=accent)
+
+    def is_collapsed(self) -> bool:
+        return self._collapsed
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        if collapsed == self._collapsed:
+            return
+        self._collapsed = collapsed
+        self.setProperty("collapsed", "true" if collapsed else "false")
+        polish_widget(self)
+        width = SIDEBAR_WIDTH_COLLAPSED if collapsed else SIDEBAR_WIDTH
+        self.setFixedWidth(width)
+        for view_id in self._icon_names:
+            row = self._nav_list.row_for(view_id)
+            if row is None:
+                continue
+            label = self._nav_labels.get(view_id, "")
+            row.button.setText("" if collapsed else label)
+            row.button.setToolTip(nav_tooltip(label, view_id))
+        self._about_btn.setText("" if collapsed else self._about_label)
+        self._collapse_btn.setToolTip(
+            "Expandir barra lateral" if collapsed else "Recolher barra lateral"
+        )
+        if self._on_collapsed_changed is not None:
+            self._on_collapsed_changed(collapsed)
+
+    def _toggle_collapsed(self) -> None:
+        self.set_collapsed(not self._collapsed)
 
     def _sync_queue_badge_style(self) -> None:
         has_count = bool(self._queue_badge.text())

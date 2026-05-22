@@ -17,7 +17,6 @@ from youtube_downloader.core.preview_cache import PreviewCache
 from youtube_downloader.ui_qt.event_bridge import EventBridge
 from youtube_downloader.ui_qt.util import schedule
 from youtube_downloader.ui_qt.widgets import MediaPreviewRow, PreviewEmptyPanel, PreviewSkeleton
-from youtube_downloader.ui_qt.widgets.download_options_bar import DownloadOptionsBar
 from youtube_downloader.ui_qt.widgets.download_alert import DownloadAlert
 
 logger = get_logger(__name__)
@@ -76,11 +75,16 @@ class DownloadsPreviewPanel:
         if self._alert is not None:
             self._alert.hide_alert()
 
+    def update_empty_queue_link(self, text: str) -> None:
+        if self._empty_state is not None:
+            self._empty_state.set_queue_link_text(text)
+
     def attach_to(
         self,
         parent_layout: QVBoxLayout,
         *,
-        options_bar: DownloadOptionsBar,
+        on_paste: Callable[[], None] | None = None,
+        on_open_queue: Callable[[], None] | None = None,
     ) -> MediaPreviewRow:
         self._section = QWidget()
         section_layout = QVBoxLayout(self._section)
@@ -94,6 +98,8 @@ class DownloadsPreviewPanel:
             "link",
             "Nenhum vídeo selecionado",
             "Cole ou arraste um link do YouTube no campo acima.",
+            on_paste=on_paste,
+            on_open_queue=on_open_queue,
             parent=self._section,
         )
         section_layout.addWidget(self._empty_state)
@@ -103,7 +109,6 @@ class DownloadsPreviewPanel:
         section_layout.addWidget(self._skeleton)
 
         self._media_row = MediaPreviewRow(on_open_queue=self._on_open_queue)
-        self._media_row.attach_options_bar(options_bar)
         self._media_row.hide()
         section_layout.addWidget(self._media_row)
 
