@@ -6,11 +6,11 @@ from PySide6.QtCore import QElapsedTimer, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from youtube_downloader.ui_qt.animation_timing import repaint_interval_ms
 from youtube_downloader.ui_qt.theme_tokens import ACCENT
 
-# Time-based rotation: smooth even when frames drop.
+# Rotation speed is wall-clock based; repaint cadence follows the display refresh rate.
 _REVOLUTION_MS = 1200
-_REPAINT_INTERVAL_MS = 16  # ~60 Hz repaint cadence
 
 
 class LoadingSpinner(QWidget):
@@ -21,7 +21,7 @@ class LoadingSpinner(QWidget):
         self._elapsed = QElapsedTimer()
         self._timer = QTimer(self)
         self._timer.setTimerType(Qt.TimerType.PreciseTimer)
-        self._timer.setInterval(_REPAINT_INTERVAL_MS)
+        self._timer.setInterval(repaint_interval_ms())
         self._timer.timeout.connect(self.update)
         self.hide()
 
