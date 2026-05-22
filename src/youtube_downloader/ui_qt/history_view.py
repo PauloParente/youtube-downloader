@@ -25,20 +25,16 @@ from youtube_downloader.core.download_history import (
 )
 from youtube_downloader.core.logging_config import get_logger
 from youtube_downloader.core.metadata import is_youtube_url
-from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
+from youtube_downloader.core.preview_cache import CARD_THUMB_SIZE
 from youtube_downloader.ui_qt.util import pixmap_from_pil
+from youtube_downloader.ui_qt.widgets.overflow_menu_button import OverflowMenuButton
 from youtube_downloader.ui_qt.widgets import (
     CompactMediaRow,
+    DangerButton,
     EmptyState,
-    IconButton,
-    LinkButton,
-    PageHeader,
-    apply_page_margins,
     muted_label,
-    set_text_class,
 )
 
-HISTORY_THUMB_SIZE = (128, 72)
 logger = get_logger(__name__)
 
 
@@ -64,13 +60,10 @@ class HistoryView(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        apply_page_margins(layout)
+        layout.setContentsMargins(0, 0, 0, 0)
         header = QHBoxLayout()
-        header.addWidget(
-            PageHeader("Histórico", "Downloads concluídos neste aplicativo."),
-            stretch=1,
-        )
-        clear_btn = QPushButton("Limpar histórico")
+        header.addStretch()
+        clear_btn = DangerButton("Limpar histórico")
         clear_btn.clicked.connect(self._clear_all)
         header.addWidget(clear_btn, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
@@ -139,7 +132,7 @@ class HistoryView(QWidget):
     def _make_card(self, entry: DownloadHistoryEntry) -> QWidget:
         path = entry.filepath
         exists = os.path.isfile(path)
-        row = CompactMediaRow(thumb_size=HISTORY_THUMB_SIZE)
+        row = CompactMediaRow(thumb_size=CARD_THUMB_SIZE)
         row.set_title(entry.title)
         size_label = format_file_size(entry.size_bytes) if exists else "—"
         channel = entry.channel_name.strip() or "—"
@@ -152,43 +145,44 @@ class HistoryView(QWidget):
                 from PIL import Image
 
                 img = Image.open(entry.thumbnail_path).convert("RGB")
-                row.set_pixmap(pixmap_from_pil(img, HISTORY_THUMB_SIZE))
+                row.set_pixmap(pixmap_from_pil(img, CARD_THUMB_SIZE))
             except OSError:
                 row.set_placeholder("")
         else:
             row.set_placeholder("")
 
-        yt_btn = IconButton(tooltip="Abrir no YouTube")
-        icon_on_button(yt_btn, "play", size=18)
-        yt_btn.setEnabled(
-            bool(entry.source_url.strip() and is_youtube_url(entry.source_url))
+        source = entry.source_url.strip()
+        menu = OverflowMenuButton()
+        menu.set_actions(
+            [
+                (
+                    "Abrir arquivo",
+                    lambda p=path: self._on_open_file(p),
+                    exists,
+                ),
+                (
+                    "Abrir pasta",
+                    lambda p=path: self._on_open_folder(p),
+                    True,
+                ),
+                (
+                    "Abrir no YouTube",
+                    lambda u=source: webbrowser.open(u),
+                    bool(source and is_youtube_url(source)),
+                ),
+                (
+                    "Baixar de novo",
+                    lambda u=source, t=entry.title: self._on_redownload(u, t),
+                    bool(source),
+                ),
+                (
+                    "Remover do histórico",
+                    lambda p=path: self._remove_entry(p),
+                    True,
+                ),
+            ]
         )
-        yt_btn.clicked.connect(lambda: webbrowser.open(entry.source_url.strip()))
-        row.actions_layout.addWidget(yt_btn)
-
-        open_btn = IconButton(tooltip="Abrir arquivo")
-        icon_on_button(open_btn, "file", size=18)
-        open_btn.setEnabled(exists)
-        open_btn.clicked.connect(lambda: self._on_open_file(path))
-        row.actions_layout.addWidget(open_btn)
-
-        folder_btn = IconButton(tooltip="Abrir pasta")
-        icon_on_button(folder_btn, "folder", size=18)
-        folder_btn.clicked.connect(lambda: self._on_open_folder(path))
-        row.actions_layout.addWidget(folder_btn)
-
-        redo_btn = IconButton(tooltip="Baixar de novo")
-        icon_on_button(redo_btn, "download", size=18)
-        redo_btn.setEnabled(bool(entry.source_url.strip()))
-        redo_btn.clicked.connect(
-            lambda: self._on_redownload(entry.source_url, entry.title)
-        )
-        row.actions_layout.addWidget(redo_btn)
-
-        rem_btn = IconButton(tooltip="Remover do histórico")
-        icon_on_button(rem_btn, "trash", size=18)
-        rem_btn.clicked.connect(lambda: self._remove_entry(path))
-        row.actions_layout.addWidget(rem_btn)
+        row.actions_layout.addWidget(menu)
 
         return row
 

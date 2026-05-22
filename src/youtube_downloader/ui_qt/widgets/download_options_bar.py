@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QVBoxLayout, QWidget
 
 from youtube_downloader.config import QUALITY_COMBO_VALUES
-from youtube_downloader.ui_qt.widgets.common import field_label
+from youtube_downloader.ui_qt.theme_tokens import SPACE_MD, SPACE_SM
+from youtube_downloader.ui_qt.widgets.buttons import LinkButton
+from youtube_downloader.ui_qt.widgets.common import field_label, secondary_label
 from youtube_downloader.ui_qt.widgets.segmented_control import SegmentedControl
 
 
@@ -17,25 +19,29 @@ class DownloadOptionsBar(QWidget):
         parent: QWidget | None = None,
         *,
         on_changed: Callable[[], None] | None = None,
+        on_open_settings: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("downloadOptionsBar")
         self.setAutoFillBackground(False)
         self._on_changed = on_changed
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(16)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(SPACE_SM)
+
+        row = QHBoxLayout()
+        row.setSpacing(SPACE_MD)
 
         self._format_segment = SegmentedControl(
             ("Vídeo", "Áudio"),
             parent=self,
             on_changed=self._emit_changed,
         )
-        layout.addWidget(self._format_segment)
+        row.addWidget(self._format_segment)
 
         quality_col = QHBoxLayout()
-        quality_col.setSpacing(8)
+        quality_col.setSpacing(SPACE_SM)
         quality_col.addWidget(field_label("Qualidade"))
         self._quality_combo = QComboBox()
         self._quality_combo.addItems(QUALITY_COMBO_VALUES)
@@ -43,7 +49,21 @@ class DownloadOptionsBar(QWidget):
             lambda _: self._emit_changed()
         )
         quality_col.addWidget(self._quality_combo, stretch=1)
-        layout.addLayout(quality_col, stretch=1)
+        row.addLayout(quality_col, stretch=1)
+        root.addLayout(row)
+
+        hint_row = QHBoxLayout()
+        hint_row.addWidget(
+            secondary_label(
+                "Opções deste download — gravadas ao clicar em Baixar. "
+                "Padrões globais em Configurações."
+            )
+        )
+        if on_open_settings is not None:
+            link = LinkButton("Abrir Configurações")
+            link.clicked.connect(on_open_settings)
+            hint_row.addWidget(link)
+        root.addLayout(hint_row)
 
         self._on_audio_changed()
 

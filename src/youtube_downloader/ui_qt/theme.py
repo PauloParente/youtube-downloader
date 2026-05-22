@@ -27,6 +27,7 @@ from youtube_downloader.ui_qt.theme_tokens import (
     PREVIEW_EMPTY_MIN_HEIGHT,
     RADIUS_THUMB,
     SIDEBAR_WIDTH,
+    SIDEBAR_WIDTH_COLLAPSED,
     ThemePalette,
 )
 
@@ -573,6 +574,33 @@ QFrame#sidebar {{
     background-color: {p.sidebar_bg};
     max-width: {SIDEBAR_WIDTH}px;
     min-width: {SIDEBAR_WIDTH}px;
+}}
+QFrame#sidebar[collapsed="true"] {{
+    max-width: {SIDEBAR_WIDTH_COLLAPSED}px;
+    min-width: {SIDEBAR_WIDTH_COLLAPSED}px;
+}}
+QLabel#titleBarActivity {{
+    color: {p.text_secondary};
+    font-size: {FONT_CAPTION}px;
+    background-color: transparent;
+}}
+QToolButton#overflowMenu {{
+    min-width: 36px;
+    max-width: 36px;
+    padding: 4px 8px;
+    font-size: 18px;
+    font-weight: 600;
+}}
+QTabWidget#queueCompactTabs::pane,
+QTabWidget#mediaHubTabs::pane {{
+    border: 1px solid {p.card_border};
+    border-radius: {RADIUS_CARD}px;
+    top: -1px;
+}}
+QTabWidget#queueCompactTabs QTabBar::tab,
+QTabWidget#mediaHubTabs QTabBar::tab {{
+    padding: 8px 16px;
+    margin-right: 4px;
 }}
 QFrame#separator {{
     color: {p.card_border};

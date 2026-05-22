@@ -16,7 +16,9 @@ Importar cores de `theme.py` ou `theme_tokens.py`. Preferir QSS (`#primary`, `#c
 ## Views
 
 - Herdar `QWidget` (ou `QMainWindow` só em `main_window.py`).
-- `PageHeader` + `apply_page_margins` em páginas novas.
+- `PageHeader` + `apply_page_margins` em páginas novas; spacing com `SPACE_*` ou `apply_layout_spacing`.
+- Ícones: `ICON_*` de `theme_tokens.py` — não literais `16`/`18` nas views.
+- Layout adaptativo: política em `layout_breakpoints.py`; views reagem em `resizeEvent` quando aplicável.
 - Callbacks no `__init__` — shell em `ui_qt/main_window.py` mantém estado.
 - Textos visíveis em **português**.
 

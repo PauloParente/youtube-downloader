@@ -68,6 +68,7 @@ from youtube_downloader.ui_qt.nav_shortcuts import NAV_VIEW_SHORTCUTS
 from youtube_downloader.ui_qt.nav_sidebar import NavSidebar
 from youtube_downloader.ui_qt.widgets.status_banner import create_status_banner_slot
 from youtube_downloader.ui_qt.theme import apply_theme
+from youtube_downloader.ui_qt.theme_tokens import SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED
 from youtube_downloader.ui_qt.util import run_on_main, schedule
 
 logger = get_logger("app")
@@ -103,11 +104,13 @@ class MainWindow(QMainWindow):
         self._view_fade_anim: Optional[QPropertyAnimation] = None
         self._active_download_job: Optional[DownloadJob] = None
         self._qthread = None
+        self._prefer_downloads_view_during_job = False
 
         self._downloads_view: Optional[DownloadsView] = None
         self._queue_view: Optional[QueueView] = None
         self._history_view: Optional[HistoryView] = None
         self._library_view: Optional[LibraryView] = None
+        self._media_hub_view = None
         self._settings_view: Optional[SettingsView] = None
         self._sidebar: Optional[NavSidebar] = None
         self._title_bar: Optional[CustomTitleBar] = None
@@ -231,6 +234,7 @@ class MainWindow(QMainWindow):
             self._on_nav_select,
             self._show_about,
             on_appearance_changed=self._set_appearance_mode,
+            on_collapsed_changed=self._on_sidebar_collapsed,
         )
         layout.addWidget(self._sidebar)
 
@@ -270,10 +274,13 @@ class MainWindow(QMainWindow):
             on_append_log=self._append_activity_log,
             on_set_activity_clear_enabled=self._set_activity_clear_enabled,
             on_open_queue=lambda: self._switch_view("queue"),
+            on_open_settings=lambda: self._switch_view("settings"),
+            on_change_output_dir=self._on_downloads_output_dir,
+            on_job_start=lambda cont: self._on_download_job_start(queue_continue=cont),
         )
         self._stack.addWidget(self._downloads_view)
 
-        for view_id in ("queue", "library", "history", "settings"):
+        for view_id in ("queue", "media", "settings"):
             placeholder = QWidget()
             self._lazy_placeholders[view_id] = placeholder
             self._stack.addWidget(placeholder)
@@ -310,22 +317,23 @@ class MainWindow(QMainWindow):
                     if self._downloads_view
                     else None
                 ),
+                on_clear_queue=self._clear_download_queue,
+                on_open_downloads=lambda: self._switch_view("download"),
                 activity_log_expanded=self._settings.activity_log_expanded,
                 on_activity_expanded_changed=self._persist_settings,
             )
             self._flush_activity_log_buffer()
             widget = self._queue_view
-        elif view_id == "library":
+        elif view_id == "media":
+            from youtube_downloader.ui_qt.history_view import HistoryView
             from youtube_downloader.ui_qt.library_view import LibraryView
+            from youtube_downloader.ui_qt.media_hub_view import MediaHubView
 
             self._library_view = LibraryView(
                 get_output_dir=lambda: self._settings.output_dir,
                 on_open_path=self._open_path_in_explorer,
+                get_thumbnail_path=self._history_thumb_for_file,
             )
-            widget = self._library_view
-        elif view_id == "history":
-            from youtube_downloader.ui_qt.history_view import HistoryView
-
             self._history_view = HistoryView(
                 on_open_folder=self._open_history_folder,
                 on_open_file=self._open_history_file,
@@ -334,7 +342,11 @@ class MainWindow(QMainWindow):
                 on_clear_history=self._clear_history,
             )
             self._history_view.set_entries(self._history_entries)
-            widget = self._history_view
+            self._media_hub_view = MediaHubView(
+                self._library_view,
+                self._history_view,
+            )
+            widget = self._media_hub_view
         elif view_id == "settings":
             from youtube_downloader.ui_qt.settings_view import SettingsView
 
@@ -388,8 +400,37 @@ class MainWindow(QMainWindow):
     def _update_nav_queue_badge(self) -> None:
         if self._sidebar is not None:
             self._sidebar.set_queue_badge(len(self._get_queue_snapshot()))
+        self._refresh_title_bar_activity()
+
+    def _refresh_title_bar_activity(self) -> None:
+        if self._title_bar is None or self._downloads_view is None:
+            return
+        self._title_bar.set_activity_hint(
+            self._downloads_view.title_bar_activity_hint()
+        )
+
+    def _on_sidebar_collapsed(self, collapsed: bool) -> None:
+        self._settings = replace(self._settings, sidebar_collapsed=collapsed)
+        save_settings(self._settings)
+        if self._title_bar is not None:
+            width = SIDEBAR_WIDTH_COLLAPSED if collapsed else SIDEBAR_WIDTH
+            self._title_bar.set_brand_width(width)
+
+    def _history_thumb_for_file(self, filepath: str) -> str | None:
+        for entry in self._history_entries:
+            if entry.filepath == filepath and entry.thumbnail_path:
+                path = entry.thumbnail_path.strip()
+                if path:
+                    return path
+        return None
 
     def _on_nav_select(self, view_id: str) -> None:
+        if (
+            view_id == "downloads"
+            and self._downloads_view is not None
+            and self._downloads_view.is_downloading
+        ):
+            self._prefer_downloads_view_during_job = True
         self._switch_view(view_id)
 
     def _switch_view(self, view_id: str) -> None:
@@ -406,12 +447,12 @@ class MainWindow(QMainWindow):
         current = self._stack.currentWidget()
         if current is not None and current is not previous:
             self._fade_in_view(current)
-        if view_id == "history":
+        if view_id == "media":
             self._refresh_history_from_disk()
             if self._history_view:
                 self._history_view.set_entries(self._history_entries)
-        if view_id == "library" and self._library_view:
-            self._library_view.refresh()
+            if self._media_hub_view:
+                self._media_hub_view.refresh_library()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         self._persist_settings()
@@ -531,7 +572,7 @@ class MainWindow(QMainWindow):
             thumbnail_path=thumb_path,
         )
         self._history_entries = add_history_entry(entry)
-        if self._history_view and self._sidebar and self._sidebar.active_view_id() == "history":
+        if self._history_view and self._sidebar and self._sidebar.active_view_id() == "media":
             self._history_view.set_entries(self._history_entries)
 
     def _add_history_entry_async(self, **kwargs) -> None:
@@ -564,7 +605,7 @@ class MainWindow(QMainWindow):
                 if (
                     self._history_view
                     and self._sidebar
-                    and self._sidebar.active_view_id() == "history"
+                    and self._sidebar.active_view_id() == "media"
                 ):
                     self._history_view.set_entries(entries)
 
@@ -755,6 +796,14 @@ class MainWindow(QMainWindow):
         if self._sidebar is not None:
             self._sidebar.set_appearance_mode(settings.appearance_mode)
             self._sidebar.refresh_theme()
+            self._sidebar.set_collapsed(settings.sidebar_collapsed)
+            if self._title_bar is not None:
+                width = (
+                    SIDEBAR_WIDTH_COLLAPSED
+                    if settings.sidebar_collapsed
+                    else SIDEBAR_WIDTH
+                )
+                self._title_bar.set_brand_width(width)
         if self._downloads_view:
             self._downloads_view.apply_settings(settings)
         if self._queue_view:
@@ -764,6 +813,19 @@ class MainWindow(QMainWindow):
         if self._settings_view:
             self._settings_view.load_settings(settings)
             self._settings_view.refresh_section_icons()
+
+    def _on_downloads_output_dir(self, path: str) -> None:
+        cleaned = path.strip()
+        if not cleaned:
+            return
+        self._settings = replace(self._settings, output_dir=cleaned)
+        save_settings(self._settings)
+        if self._downloads_view is not None:
+            self._downloads_view.apply_settings(self._settings)
+
+    def _on_download_job_start(self, *, queue_continue: bool) -> None:
+        if not queue_continue:
+            self._prefer_downloads_view_during_job = False
 
     def _persist_settings(self) -> None:
         if self._downloads_view is None:
@@ -811,7 +873,9 @@ class MainWindow(QMainWindow):
             )
             return
         self._active_download_job = job
-        self._switch_view("queue")
+        if self._settings.focus_queue_on_download and not self._prefer_downloads_view_during_job:
+            self._switch_view("queue")
+        self._sync_now_playing_panel()
         self._qthread = start_download_thread(
             self._downloader,
             job,
@@ -891,6 +955,9 @@ class MainWindow(QMainWindow):
                     self._start_next_queued_if_idle()
             elif event.event_type == EventType.ERROR:
                 self._active_download_job = None
+            if event.event_type == EventType.DONE and self._media_hub_view:
+                self._media_hub_view.refresh_library()
+            self._refresh_title_bar_activity()
         except Exception:
             logger.exception("Erro ao processar evento: %s", event.event_type.value)
             if self._downloads_view and event.event_type in (

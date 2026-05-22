@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
+from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -15,15 +17,17 @@ from PySide6.QtWidgets import (
 )
 
 from youtube_downloader.core.library_scan import LibraryFile, scan_library_folder
+from youtube_downloader.core.preview_cache import CARD_THUMB_SIZE
 from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
+from youtube_downloader.ui_qt.theme_tokens import ICON_LG, ICON_MD
+from youtube_downloader.ui_qt.util import pixmap_from_pil
 from youtube_downloader.ui_qt.widgets import (
     CompactMediaRow,
     EmptyState,
     GhostButton,
-    PageHeader,
-    apply_page_margins,
     muted_label,
 )
+from youtube_downloader.ui_qt.widgets.overflow_menu_button import OverflowMenuButton
 
 
 class LibraryView(QWidget):
@@ -32,27 +36,23 @@ class LibraryView(QWidget):
         *,
         get_output_dir: Callable[[], str],
         on_open_path: Callable[[str], None],
+        get_thumbnail_path: Callable[[str], Optional[str]] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._get_output_dir = get_output_dir
         self._on_open_path = on_open_path
+        self._get_thumbnail_path = get_thumbnail_path
         self._files: list[LibraryFile] = []
         self._build_ui()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        apply_page_margins(layout)
+        layout.setContentsMargins(0, 0, 0, 0)
         header = QHBoxLayout()
-        header.addWidget(
-            PageHeader(
-                "Biblioteca",
-                "Arquivos de mídia na pasta de destino configurada.",
-            ),
-            stretch=1,
-        )
+        header.addStretch()
         refresh_btn = GhostButton("Atualizar")
-        icon_on_button(refresh_btn, "library", size=18)
+        icon_on_button(refresh_btn, "library", size=ICON_MD)
         refresh_btn.clicked.connect(self.refresh)
         header.addWidget(refresh_btn, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
@@ -128,17 +128,44 @@ class LibraryView(QWidget):
             self._list_layout.addWidget(empty)
             return
         for item in visible:
-            row = CompactMediaRow()
+            row = CompactMediaRow(thumb_size=CARD_THUMB_SIZE)
             row.set_title(item.name)
             row.set_meta(f"{item.format_ext} · {item.size_label}")
-            icon_name = "audio" if item.is_audio else "video"
-            row.set_pixmap(themed_icon(icon_name, 32).pixmap(32, 32))
-            open_btn = QPushButton()
-            open_btn.setObjectName("iconOnly")
-            icon_on_button(open_btn, "folder", size=18)
-            open_btn.setToolTip("Abrir arquivo")
-            open_btn.clicked.connect(
-                lambda checked, p=item.filepath: self._on_open_path(p)
+            thumb_path = (
+                self._get_thumbnail_path(item.filepath)
+                if self._get_thumbnail_path is not None
+                else None
             )
-            row.actions_layout.addWidget(open_btn)
+            if thumb_path and os.path.isfile(thumb_path):
+                try:
+                    from PIL import Image
+
+                    img = Image.open(thumb_path).convert("RGB")
+                    row.set_pixmap(pixmap_from_pil(img, CARD_THUMB_SIZE))
+                except OSError:
+                    self._set_row_icon(row, item.is_audio)
+            else:
+                self._set_row_icon(row, item.is_audio)
+            folder = os.path.dirname(item.filepath)
+            menu = OverflowMenuButton()
+            menu.set_actions(
+                [
+                    (
+                        "Abrir arquivo",
+                        lambda p=item.filepath: self._on_open_path(p),
+                        True,
+                    ),
+                    (
+                        "Abrir pasta",
+                        lambda d=folder: self._on_open_path(d),
+                        bool(folder),
+                    ),
+                ]
+            )
+            row.actions_layout.addWidget(menu)
             self._list_layout.addWidget(row)
+
+    @staticmethod
+    def _set_row_icon(row: CompactMediaRow, is_audio: bool) -> None:
+        icon_name = "audio" if is_audio else "video"
+        row.set_pixmap(themed_icon(icon_name, ICON_LG).pixmap(ICON_LG, ICON_LG))

@@ -66,10 +66,22 @@ class CustomTitleBar(QFrame):
         title_lbl.setAutoFillBackground(False)
         brand_layout.addWidget(title_lbl, alignment=Qt.AlignmentFlag.AlignVCenter)
         brand_layout.addStretch()
+        self._brand = brand
         root.addWidget(brand)
 
         self._drag_region = QWidget()
         self._drag_region.setObjectName("titleBarDrag")
+        drag_layout = QHBoxLayout(self._drag_region)
+        drag_layout.setContentsMargins(8, 0, 8, 0)
+        drag_layout.addStretch()
+        self._activity_label = QLabel("")
+        self._activity_label.setObjectName("titleBarActivity")
+        self._activity_label.setAutoFillBackground(False)
+        self._activity_label.hide()
+        drag_layout.addWidget(
+            self._activity_label,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
         root.addWidget(self._drag_region, stretch=1)
 
         controls = QWidget()
@@ -114,6 +126,14 @@ class CustomTitleBar(QFrame):
 
     def _set_control_icon(self, button: QPushButton, name: str, color: str) -> None:
         button.setIcon(themed_icon(name, TITLE_BAR_ICON_SIZE, color=color))
+
+    def set_brand_width(self, width_px: int) -> None:
+        self._brand.setFixedWidth(width_px)
+
+    def set_activity_hint(self, text: str) -> None:
+        cleaned = (text or "").strip()
+        self._activity_label.setText(cleaned)
+        self._activity_label.setVisible(bool(cleaned))
 
     def refresh_control_icons(self) -> None:
         """Re-tint window controls after theme change."""

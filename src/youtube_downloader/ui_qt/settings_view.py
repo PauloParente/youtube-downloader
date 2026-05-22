@@ -25,10 +25,9 @@ from youtube_downloader.config import (
     QUALITY_FROM_DISPLAY,
     QUALITY_OPTIONS,
 )
-from youtube_downloader.core.appearance import appearance_mode_from_dark_enabled
 from youtube_downloader.core.settings import AppSettings
 from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
-from youtube_downloader.ui_qt.theme_tokens import PAGE_MARGINS
+from youtube_downloader.ui_qt.theme_tokens import ICON_MD, PAGE_MARGINS, SPACE_MD, SPACE_SM
 from youtube_downloader.ui_qt.widgets import (
     Card,
     PageHeader,
@@ -72,6 +71,10 @@ class SettingsView(QWidget):
         self._on_save = on_save
         self._on_appearance_changed = on_appearance_changed
         self._section_icons: list[tuple[QLabel, str]] = []
+        self._appearance_mode = "dark"
+        self._activity_log_expanded = True
+        self._sidebar_collapsed = False
+        self._focus_queue_on_download = True
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -88,6 +91,17 @@ class SettingsView(QWidget):
                 "Ajuste o comportamento do aplicativo para otimizar seu fluxo de trabalho.",
             )
         )
+        save_banner = QFrame()
+        save_banner.setObjectName("statusBanner")
+        banner_layout = QVBoxLayout(save_banner)
+        banner_layout.setContentsMargins(SPACE_MD, SPACE_SM, SPACE_MD, SPACE_SM)
+        banner_layout.addWidget(
+            muted_label(
+                "Alterações aplicam-se ao próximo download após clicar em "
+                "Salvar alterações. O tema claro/escuro fica na barra lateral."
+            )
+        )
+        layout.addWidget(save_banner)
 
         general = self._card("general", "Geral", layout)
         gl = general.layout()
@@ -97,20 +111,18 @@ class SettingsView(QWidget):
         self._folder_entry.setReadOnly(True)
         path_row.addWidget(self._folder_entry, stretch=1)
         browse = QPushButton("Procurar")
-        icon_on_button(browse, "folder", size=18)
+        icon_on_button(browse, "folder", size=ICON_MD)
         browse.clicked.connect(self._browse_folder)
         path_row.addWidget(browse)
         gl.addLayout(path_row)
-        gl.addWidget(field_label("Tema da interface"))
-        self._dark_check = QCheckBox("Modo escuro")
-        self._dark_check.setObjectName("switch")
-        self._dark_check.setChecked(True)
-        self._dark_check.toggled.connect(self._on_dark_check_toggled)
-        gl.addWidget(self._dark_check)
         gl.addWidget(field_label("Idioma das legendas"))
         self._language_combo = QComboBox()
         self._language_combo.addItems(_LANGUAGE_OPTIONS)
         gl.addWidget(self._language_combo)
+        self._focus_queue_check = QCheckBox("Abrir a tela Fila ao iniciar download")
+        self._focus_queue_check.setObjectName("switch")
+        self._focus_queue_check.setChecked(True)
+        gl.addWidget(self._focus_queue_check)
 
         quality = self._card("quality", "Qualidade e Formato", layout)
         ql = quality.layout()
@@ -159,7 +171,7 @@ class SettingsView(QWidget):
         cookies_row.addWidget(self._cookies_entry, stretch=1)
         cookies_btn = QPushButton()
         cookies_btn.setObjectName("iconOnly")
-        icon_on_button(cookies_btn, "folder", size=18)
+        icon_on_button(cookies_btn, "folder", size=ICON_MD)
         cookies_btn.clicked.connect(self._browse_cookies)
         cookies_row.addWidget(cookies_btn)
         al.addLayout(cookies_row)
@@ -183,20 +195,12 @@ class SettingsView(QWidget):
         dock_layout.addLayout(btn_row)
         outer.addWidget(dock)
 
-    def _on_dark_check_toggled(self, checked: bool) -> None:
-        if self._on_appearance_changed is not None:
-            self._on_appearance_changed(appearance_mode_from_dark_enabled(checked))
-
     def sync_appearance_mode(self, mode: str) -> None:
-        self._dark_check.blockSignals(True)
-        try:
-            self._dark_check.setChecked(mode == "dark")
-        finally:
-            self._dark_check.blockSignals(False)
+        self._appearance_mode = mode
 
     def refresh_section_icons(self) -> None:
         for icon_lbl, icon_name in self._section_icons:
-            icon_lbl.setPixmap(themed_icon(icon_name, 20).pixmap(20, 20))
+            icon_lbl.setPixmap(themed_icon(icon_name, ICON_MD).pixmap(ICON_MD, ICON_MD))
 
     def _card(self, icon_name: str, title: str, parent_layout: QVBoxLayout) -> QWidget:
         card = Card()
@@ -225,8 +229,12 @@ class SettingsView(QWidget):
             self._webm_hint.hide()
 
     def load_settings(self, settings: AppSettings) -> None:
+        self._appearance_mode = settings.appearance_mode
+        self._activity_log_expanded = settings.activity_log_expanded
+        self._sidebar_collapsed = settings.sidebar_collapsed
+        self._focus_queue_on_download = settings.focus_queue_on_download
+        self._focus_queue_check.setChecked(settings.focus_queue_on_download)
         self._folder_entry.setText(settings.output_dir)
-        self.sync_appearance_mode(settings.appearance_mode)
         self._language_combo.setCurrentText(
             _LANGUAGE_TO_LABEL.get(settings.language, _LANGUAGE_OPTIONS[0])
         )
@@ -292,8 +300,11 @@ class SettingsView(QWidget):
             bandwidth_limit_kbps=bandwidth,
             notify_on_complete=self._notify_check.isChecked(),
             auto_download_subtitles=self._subtitles_check.isChecked(),
-            appearance_mode="dark" if self._dark_check.isChecked() else "light",
+            appearance_mode=self._appearance_mode,
             cookies_file=self._cookies_entry.text().strip(),
+            activity_log_expanded=self._activity_log_expanded,
+            sidebar_collapsed=self._sidebar_collapsed,
+            focus_queue_on_download=self._focus_queue_check.isChecked(),
         )
 
     def _save(self) -> None:

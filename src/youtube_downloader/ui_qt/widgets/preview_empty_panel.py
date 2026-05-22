@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from collections.abc import Callable
 
-from youtube_downloader.ui_qt.icons import themed_icon
-from youtube_downloader.ui_qt.theme_tokens import PREVIEW_EMPTY_ICON_SIZE, PREVIEW_EMPTY_MIN_HEIGHT
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+
+from youtube_downloader.ui_qt.icons import icon_on_button, themed_icon
+from youtube_downloader.ui_qt.theme_tokens import PREVIEW_EMPTY_MIN_HEIGHT
+from youtube_downloader.ui_qt.widgets.buttons import LinkButton, SecondaryButton
 from youtube_downloader.ui_qt.widgets.common import secondary_label
 
 
@@ -16,6 +19,9 @@ class PreviewEmptyPanel(QFrame):
         icon_name: str,
         title: str,
         subtitle: str = "",
+        *,
+        on_paste: Callable[[], None] | None = None,
+        on_open_queue: Callable[[], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -50,3 +56,28 @@ class PreviewEmptyPanel(QFrame):
             sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
             sub.setWordWrap(True)
             layout.addWidget(sub)
+
+        if on_paste is not None or on_open_queue is not None:
+            actions = QHBoxLayout()
+            actions.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            actions.setSpacing(12)
+            if on_paste is not None:
+                paste_btn = SecondaryButton("Colar link")
+                icon_on_button(paste_btn, "link", size=18)
+                paste_btn.clicked.connect(on_paste)
+                actions.addWidget(paste_btn)
+            if on_open_queue is not None:
+                self._queue_btn = LinkButton("Ver fila")
+                self._queue_btn.clicked.connect(on_open_queue)
+                actions.addWidget(self._queue_btn)
+            else:
+                self._queue_btn = None
+            layout.addLayout(actions)
+
+    def set_queue_link_text(self, text: str) -> None:
+        if getattr(self, "_queue_btn", None) is not None:
+            if text:
+                self._queue_btn.setText(text)
+                self._queue_btn.show()
+            else:
+                self._queue_btn.hide()

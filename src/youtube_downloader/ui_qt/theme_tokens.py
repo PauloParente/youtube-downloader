@@ -14,6 +14,7 @@ SPACE_XL = 32
 PAGE_MARGINS = (SPACE_LG, 20, SPACE_LG, 20)
 CARD_PADDING = SPACE_MD
 SIDEBAR_WIDTH = 220
+SIDEBAR_WIDTH_COLLAPSED = 56
 TITLE_BAR_HEIGHT = 50
 TITLE_BAR_ICON_SIZE = 12
 
@@ -22,10 +23,21 @@ RADIUS_INPUT = 8
 RADIUS_BUTTON = 8
 RADIUS_THUMB = 8
 
+# Icon sizes (logical px — Qt scales on HiDPI)
+ICON_XS = 12
+ICON_SM = 16
+ICON_MD = 18
+ICON_LG = 24
+
 # Hero inputs (URL Downloads, filtros Histórico/Biblioteca) e controlos na mesma linha
 INPUT_HERO_HEIGHT = 44
 PREVIEW_EMPTY_MIN_HEIGHT = 240
 PREVIEW_EMPTY_ICON_SIZE = 56
+
+# Responsive layout (content area = view width to the right of the sidebar)
+CONTENT_BREAKPOINT_COMPACT = 720
+QUEUE_PENDING_SCROLL_MIN_HEIGHT = 200
+QUEUE_PENDING_SCROLL_MIN_HEIGHT_WITH_ITEMS = 400
 
 FONT_FAMILY = '"Segoe UI Variable", "Segoe UI"'
 FONT_BODY = 13

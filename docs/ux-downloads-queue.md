@@ -6,8 +6,20 @@ Especificação do comportamento da tela **Downloads**, da tela **Fila** na side
 
 | Tela | Conteúdo |
 |------|----------|
-| **Downloads** | Hero URL (validação visual, colar, **arrastar link**, + Fila, **Ver fila (N)**), preview (`EmptyState` vazio / skeleton / row), alerta de erro inline, barra **Vídeo \| Áudio** + qualidade, action dock (chip pasta destino, status humanizado, Baixar) |
-| **Fila** (sidebar) | Duas colunas: **esquerda (maior)** — *Baixando agora* (`QueueNowPlayingCard`) + **Atividade**; **direita (menor)** — *Na fila* com `CompactMediaRow` e remover |
+| **Downloads** | Hero URL (validação visual + tooltips, colar, **arrastar link**, + Fila), resumo/banner de fila, preview (`EmptyState` com CTAs / skeleton / row), barra **Vídeo \| Áudio** + qualidade **sempre visível**, faixa **Em curso** durante download, alerta de erro inline, action dock (chip pasta, **Abrir arquivo** após concluir, Baixar / Cancelar, menu ⋯) |
+| **Os meus downloads** (sidebar) | Abas **Biblioteca** (ficheiros na pasta) e **Histórico** (metadados); menu ⋯ por linha |
+| **Fila** (sidebar) | Banner de resumo, *Baixando agora* (Cancelar vermelho, Pular), **Atividade**, *Na fila* com CTAs; layout **responsivo**; atalhos **Esc** / **S** (com foco na Fila) |
+
+### Layout responsivo (Fila)
+
+Política: [`layout_breakpoints.py`](../src/youtube_downloader/ui_qt/layout_breakpoints.py) (`CONTENT_BREAKPOINT_COMPACT = 720`).
+
+| Largura do painel Fila | Disposição |
+|------------------------|------------|
+| **≥ 720px** (`comfortable`) | Duas colunas: **esquerda (2/3)** — *Baixando agora* + Atividade; **direita (1/3)** — *Na fila* |
+| **&lt; 720px** (`compact`) | Abas **Agora** \| **Na fila** (em vez de scroll vertical longo) |
+
+Com a janela no mínimo (`900×680`), a Fila usa modo **compact**. Ao alargar a janela, passa automaticamente a duas colunas.
 
 A lista de pendentes e o progresso do download em curso ficam na tela **Fila** (card *Baixando agora*). Na Downloads, o dock inferior mostra apenas mensagens de status resumidas (ex. “Baixando…”, “Download concluído.”).
 
@@ -35,6 +47,15 @@ Um único vídeo sem enfileirar = fila vazia na lista + **Baixar** no campo. Nã
 - Erro de download: status no dock + banner `#downloadAlert` acima do preview.
 - Progresso (% e barra): card *Baixando agora* na tela **Fila** (modo indeterminado ao expandir playlist ou preparar próximo da fila).
 
+## Atalhos (tela Fila com foco)
+
+| Atalho | Ação |
+|--------|------|
+| `Esc` | Cancelar download em curso (para tudo e esvazia fila) |
+| `S` | Pular para o próximo da fila (se houver pendentes) |
+
+Não disparam com foco num campo de texto (ex. log de Atividade expandido).
+
 ## Atalhos (tela Downloads com foco)
 
 | Atalho | Ação |
@@ -58,11 +79,13 @@ Um único vídeo sem enfileirar = fila vazia na lista + **Baixar** no campo. Nã
   2. Campo com **playlist** → expande, enfileira todos, `pop_next` e inicia o primeiro.
   3. Campo vazio e fila com itens → `pop_next` e inicia o primeiro pendente.
   4. Campo vazio e fila vazia → erro no log.
-- Opções da tela Downloads aplicam ao próximo job ao baixar; Configurações avançadas após **Salvar** (ver AGENTS.md).
+- Opções da tela Downloads (vídeo/áudio/qualidade) gravam em `settings.json` ao clicar em **Baixar**; Configurações avançadas após **Salvar** (ver AGENTS.md).
+- **+ Fila** / playlist: banner informativo na Downloads («N vídeos adicionados…») além do log na Fila.
+- Pasta de destino: chip no dock abre a pasta; menu ⋯ → **Alterar pasta de destino…** (`QFileDialog`).
 
 ## Durante download
 
-Ao iniciar um job (`_run_download_job`), a janela muda automaticamente para a tela **Fila** (inclui o primeiro vídeo e os seguintes da fila).
+Ao iniciar um job (`_run_download_job`), a janela muda para a tela **Fila** por padrão (`focus_queue_on_download` em Configurações → Geral). Se o utilizador voltar manualmente a **Downloads** durante o download, os jobs seguintes da mesma sessão **não** forçam a mudança de ecrã. A faixa **Em curso** na Downloads mostra título, estado, % e link «Ver na Fila».
 
 | Controle | Onde | Estado |
 |----------|------|--------|
@@ -87,7 +110,7 @@ Notificação desktop: uma por DONE (se ativada em Configurações).
 
 ## Cancelar e pular
 
-- **Cancelar** (Downloads ou Fila, durante download): interrompe o vídeo atual, **esvazia a fila** e remove parciais (`.part`, etc.). No rodapé de Downloads o botão permanece **Cancelar** enquanto houver job ativo.
+- **Cancelar** (Downloads ou Fila, durante download): interrompe o vídeo atual, **esvazia a fila** e remove parciais (`.part`, etc.). No rodapé de Downloads aparece **Cancelar** (botão vermelho) enquanto houver job ativo; ações secundárias ficam no menu **⋯**.
 - **Pular** (só na tela **Fila**, com pendentes): cancela só o vídeo atual e inicia o **próximo** da fila.
 - **Limpar URL** (Downloads, ocioso): substitui Cancelar quando não há download em curso.
 - Entre vídeos da fila (após DONE): a UI mantém modo download (Cancelar + Pular na Fila) até a fila acabar.

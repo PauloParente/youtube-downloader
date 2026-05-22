@@ -39,6 +39,59 @@ Margens de página: `PAGE_MARGINS = (24, 20, 24, 20)` — usar `apply_page_margi
 
 Padding interno de card: 16px (`Card` / QSS).
 
+Helpers: `apply_page_margins(layout)` e `apply_layout_spacing(layout, gap=SPACE_LG)` em [`widgets/common.py`](../src/youtube_downloader/ui_qt/widgets/common.py).
+
+## Layout e responsividade (desktop)
+
+### Regras
+
+| Regra | Detalhe |
+|-------|---------|
+| Margens de página | Só `apply_page_margins` — não repetir `PAGE_MARGINS` nas views |
+| Espaçamento entre widgets | Preferir `SPACE_*` ou `apply_layout_spacing`; `SPACE_XS` (4px) só para gaps ícone–texto ou controlos muito densos |
+| Tamanhos fixos | Reservar a `theme_tokens.py` (sidebar, hero input, scroll mínimos); evitar literais `8`, `200`, `18` nas views |
+| Política de tamanho | `QSizePolicy` + `stretch` nos layouts; não `setFixedSize` salvo sidebar/title bar/miniaturas |
+| Breakpoints | Política pura em [`layout_breakpoints.py`](../src/youtube_downloader/ui_qt/layout_breakpoints.py) |
+
+### Tamanhos de controlo
+
+| Token | px | Uso |
+|-------|-----|-----|
+| `INPUT_HERO_HEIGHT` | 44 | Campo URL, filtros hero (~40–48px) |
+| `NAV_ITEM_HEIGHT` | 40 | Entradas da sidebar |
+| `ICON_XS` / `ICON_SM` / `ICON_MD` / `ICON_LG` | 12 / 16 / 18 / 24 | `themed_icon` / `icon_on_button` |
+
+### Breakpoints (área de conteúdo)
+
+Largura de referência = largura do widget de página (área à direita da sidebar, já descontada nos filhos do stack).
+
+| Modo | Condição | Comportamento |
+|------|----------|---------------|
+| `comfortable` | largura ≥ `CONTENT_BREAKPOINT_COMPACT` (720) | Fila: duas colunas (2:1) |
+| `compact` | largura &lt; 720 | Fila: coluna única empilhada (*Baixando agora* + Atividade → *Na fila*) |
+
+Com `WINDOW_MIN_WIDTH=900`, a Fila arranca em modo **compact** (~680px úteis). Ao alargar a janela (≥ ~940px de largura total), passa a **duas colunas**.
+
+### Janela mínima
+
+| Constante | Valor | Notas |
+|-----------|-------|-------|
+| `WINDOW_SIZE` | 980×720 | Tamanho inicial |
+| `WINDOW_MIN_WIDTH` / `WINDOW_MIN_HEIGHT` | 900×680 | Não reduzir sem validar empilhamento + action dock + preview |
+
+### HiDPI (Qt 6)
+
+- O Qt escala widgets automaticamente; não é necessário `AA_EnableHighDpiScaling`.
+- Ícones: tamanhos da escala `ICON_*`; SVG em `resources/icons/`.
+- Após `setProperty("class", …)` ou mudança de tema: `polish_widget(widget)`.
+
+### Miniaturas (referência)
+
+| Contexto | Tamanho | Fonte |
+|----------|---------|--------|
+| Fila / Histórico (linha compacta) | 128×72 | `CARD_THUMB_SIZE` em `core/preview_cache.py` |
+| Preview Downloads | 240×135 | `THUMB_DISPLAY_SIZE` em `media_preview_row.py` |
+
 ## Tipografia
 
 | objectName / class | Tamanho | Uso |
@@ -80,7 +133,9 @@ Padding interno de card: 16px (`Card` / QSS).
 | Log de atividade | `logInset` | `QPlainTextEdit` (só visível expandido) |
 | Toggle de secção | `sectionToggle` | Colapsar/expandir Atividade |
 | Campo URL hero | `urlHero` | Input principal na tela Downloads (`INPUT_HERO_HEIGHT`) |
-| Linha URL + ações | `urlToolRow` | Colar, + Fila, ícones — mesma altura que `urlHero` |
+| Linha URL + ações | `urlToolRow` | Colar, + Fila, ícones — mesma altura que `urlHero`; modo compact (&lt;720px): só ícones |
+| Faixa em curso (Downloads) | `DownloadsNowPlayingStrip` | Card durante download: título, status, barra, «Ver na Fila» |
+| Opções de formato (Downloads) | `downloadOptionsBar` | Sempre abaixo do preview (não só dentro do card de metadados) |
 | Faixa de progresso (legado) | `progressStrip` | Widget `DownloadProgressStrip` — não usado na UI; progresso na tela **Fila** |
 | Skeleton preview | `skeletonLine` | Placeholder de metadados |
 | Action dock | `actionDock` | Rodapé fixo: linha 1 status + atalhos; linha 2 pasta/ações/Baixar |
@@ -117,12 +172,19 @@ Helper `field_label(text)` — mesmo estilo que `class="fieldLabel"`.
 
 ## QA visual (checklist)
 
-- [x] Dark e light: sidebar (`accent_subtle`), inputs, cards, switches, scrollbars
-- [x] Todas as páginas: `PageHeader` e margens iguais; Fila/Histórico/Biblioteca com `CompactMediaRow` / `EmptyState`
-- [x] Downloads: preview, DnD, erros PT, progress com contexto, chip destino, atalhos Enter/Esc
-- [x] Configurações: `actionDock`, switches, alternar tema
-- [ ] Ícones SVG legíveis em 100% e 125% DPI (Windows) — validar manualmente
-- [x] `python -m pytest`
+### Automático (CI / local)
+
+- [x] `python -m pytest` (incl. `test_layout_breakpoints`, `test_theme_qss`, tokens 8px)
+
+### Manual — antes de merge de PR com UI
+
+- [ ] **Dark e light:** sidebar, inputs, cards, switches, scrollbars
+- [ ] **Margens:** todas as páginas com `PageHeader` + `apply_page_margins`
+- [ ] **Janela no mínimo (900×680):** sem clipping; Fila em layout empilhado; action dock Downloads legível
+- [ ] **Janela confortável (~980×720+):** Fila em duas colunas; redimensionar transição suave
+- [ ] **HiDPI Windows:** ícones legíveis a 100% e 125% DPI (`ICON_*` na URL row e title bar)
+- [ ] **Downloads:** preview, DnD, erros PT, chip destino, Enter/Esc
+- [ ] **Fila:** *Baixando agora*, Atividade, pendentes, Cancelar/Pular
 
 ## Lacunas corrigidas (auditoria)
 

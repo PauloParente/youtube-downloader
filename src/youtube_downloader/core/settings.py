@@ -34,6 +34,8 @@ class AppSettings:
     appearance_mode: str = "dark"
     cookies_file: str = ""
     activity_log_expanded: bool = True
+    sidebar_collapsed: bool = False
+    focus_queue_on_download: bool = True
 
     @classmethod
     def defaults(cls) -> "AppSettings":
@@ -51,6 +53,8 @@ class AppSettings:
             appearance_mode="dark",
             cookies_file="",
             activity_log_expanded=True,
+            sidebar_collapsed=False,
+            focus_queue_on_download=True,
         )
 
 
@@ -144,6 +148,12 @@ def _coerce_settings(data: dict[str, Any]) -> AppSettings:
         cookies_file=cookies_file,
         activity_log_expanded=bool(
             data.get("activity_log_expanded", defaults.activity_log_expanded)
+        ),
+        sidebar_collapsed=bool(
+            data.get("sidebar_collapsed", defaults.sidebar_collapsed)
+        ),
+        focus_queue_on_download=bool(
+            data.get("focus_queue_on_download", defaults.focus_queue_on_download)
         ),
     )
 
